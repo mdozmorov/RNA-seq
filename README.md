@@ -1,0 +1,1 @@
+RNA-seq analysis pipeline, featureCounts input, edgeR, functional enrichment, visualization

@@ -1,0 +1,675 @@
+---
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: united
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=T, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is') #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+# Libraries
+
+```{r libraries}
+library(openxlsx)
+library(DT)
+library(edgeR)
+library(sva)
+library(ggplot2)
+library(ggrepel)
+library(reshape2)
+library(plotly)
+library(dplyr)
+library(reshape2)
+library(MDmisc)
+library(heatmaply)
+library(pheatmap)
+library(org.Mm.eg.db)
+library(shiny)
+library(ggplot2)
+library(pheatmap)
+library(enrichR)
+library(annotables) # Annotations of Ensembl IDs
+# Remove non-canonical chromosome names, Mus Musculus
+grcm38 <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
+grcm38 <- grcm38[ !duplicated(grcm38) & !is.na(grcm38$symbol) & grcm38$description != "", ]
+all.symbol <- unique(grcm38$symbol) # All genes for background
+```
+
+# Helper functions
+
+```{r}
+# Function to compare groups
+#' @param object glmLTR result
+#' @param p.adj FDR adjusted p-value cutoff
+#' @param subset_by logical vectore defined earlier and used to subset the whole dataset
+#' @param comparison text defining what comparison has been made
+#' @param nplot how many top differential genes to plot
+p.vals <- function(object, p.adj = 0.1, subset_by = subset_by, comparison = "DEGs", nplot = 50, print_to_file = TRUE) {
+  genes.ABC <- topTags(object, n = Inf, p.value = p.adj) %>% as.data.frame # Get all significant genes
+  
+  # genes.ABC$ensgene <- sapply(genes.ABC$genes, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
+  genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), grcm38, by = c("genes" = "ensgene")) # Attach annotations
+  
+  if (print_to_file) {
+    # Save most significant genes
+    save_res(genes.ABC, fileName, wb = wb, sheetName = comparison) # Save gene list
+  }
+  # Return actual gene list
+  return(genes.ABC)
+}
+```
+
+```{r}
+# Function to plot and save selected gene lists
+genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, subset_by = c("A", "B"), comparison = "C231_noCRISPR_vs_Negative", clustmethod = "ward", width = 6, height = 8, print_to_file = TRUE) {
+  # Select columns to subset
+  if (!is.na(subset_by)){
+    subset_index <- grepl(paste(subset_by, collapse = "|"), sample_annotation_subset$Group) 
+  } else {
+    subset_index <- 1:ncol(cpm(edgeR.dgelist, log = TRUE))
+  }
+  # # Order object by the most on-average significant genes
+  # object <- object[ order( (rank(object$FDR.x) + rank(object$FDR.y)) / 2), ] 
+  # # Save most significant genes
+  # fileName <- paste0("results/DEGs_", comparison,  "_hg19.xlsx") # Construct filename
+  # unlink(fileName) # Delete file, if exists
+  # write.xlsx2(object, fileName, sheetName = comparison, row.names = FALSE) # Save gene list
+  
+  # Plot top genes
+  genes.to.plot <- object[1:nplot, c("genes", "symbol")] 
+  genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes], genes.to.plot$genes), ] # Make the same order as the genes subsetted from the whole dataset
+  matrix.to.plot <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes=TRUE)[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes, subset_index] # * edgeR.dgelist@.Data[[2]]$norm.factors[subset_index] # Subset matrix to plot
+  
+  annotation_col <- data.frame(Group = sample_annotation_subset$Treatment[subset_index])
+  rownames(annotation_col) <- colnames(cpm(edgeR.dgelist)[, subset_index])
+  
+  # Save to PDF
+  if (print_to_file) {
+    pdf(paste0("results/Figure_Heatmap_", comparison, "_", nplot, ".pdf"), width = width, height = height)
+    NMF::aheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), hclust = clustmethod, scale = "row", annCol = apply(data.frame(annotation_samples$Cell[ subset_index ], annotation_samples$Condition[ subset_index ]), 1, paste, collapse = "_"), annColors = list(c("red", "blue")), labRow = genes.to.plot$symbol, fontsize = 10, cexRow = 10) # color="-RdYlBu"
+    dev.off()
+  } else {
+    # NMF::aheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), hclust = clustmethod, scale = "row", annCol = sample_annotation_subset$Group[subset_index], annColors = list(c("red", "blue")), labRow = genes.to.plot$symbol, fontsize = 10, cexRow = 10) # color="-RdYlBu"
+    pheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol)
+
+  }
+}
+```
+
+# Settings
+
+```{r}
+data_dir <- "/Users/mdozmorov/Documents/Data/VCU_work/Paula_2018/"
+p.adj <- 0.2
+fdr.cutoff <- 0.3
+top_n <- 50
+```
+
+```{r}
+# Adjust path to sample annotation file
+# Annotation file should have "Sample" column with sample names, and any other annotation columns
+sample_annotation <- read.csv(paste0(data_dir, "data/sample_annotation.csv"))
+sample_annotation$Sample <- make.names(sample_annotation$Sample)
+sample_annotation <- sample_annotation[order(sample_annotation$Sample), ]
+# Explicitly make factors
+sample_annotation$Project   <- factor(sample_annotation$Project)
+sample_annotation$Cell.Line <- factor(sample_annotation$Cell.Line)
+sample_annotation$Treatment <- factor(sample_annotation$Treatment)
+sample_annotation$Lane      <- factor(sample_annotation$Lane)
+```
+
+# QC
+
+Quality control was performed on each processing stage. The final QC metrics for the aligned BAM files are shown.
+
+```{r singleQCfile, eval=FALSE}
+# Modify the following code according to your experiments
+# Use if featureCounts processed all BAM files at once
+qc_counts <- read.table(paste0(data_dir, "/counts.txt.summary"), sep = "\t", header = TRUE)
+# Cleanup column names
+colnames(qc_counts) <- sub("03_sorted.", "", colnames(qc_counts))
+colnames(qc_counts) <- sub("_L003_R1_001_paired.fastq.gz.bam", "", colnames(qc_counts))
+```
+
+```{r multiQCfile, eval=TRUE}
+# Modify the following code according to your experiments
+# Use if featureCounts processed all BAM files in a loop one-by-one
+qc_counts   <- cbind() # QC matrix
+qc_colnames <- c()     # QC matrix column names
+files_qc <- list.files(path = paste0(data_dir, "03_featureCount/"), pattern = "*.summary")
+for (f in files_qc) {
+  qc_data <- read.table(paste0(data_dir, "03_featureCount/", f), sep = "\t", header = TRUE)
+  qc_counts <- cbind(qc_counts, qc_data[, 2]) # Get the second, numerical column
+  qc_colnames <- c(qc_colnames, colnames(qc_data)[2]) # Get the second column name
+}
+# Add columns
+colnames(qc_counts) <- qc_colnames
+qc_counts <- data.frame(Status = qc_data$Status, qc_counts[, order(colnames(qc_counts))])
+# Cleanup column names
+colnames(qc_counts) <- sub("X02_subread.align.", "", colnames(qc_counts))
+colnames(qc_counts) <- sub(".bam", "", colnames(qc_counts))
+# Check is sample annotations anc QC columns match
+all.equal(sample_annotation$Sample, colnames(qc_counts)[2:ncol(qc_counts)])
+```
+
+```{r}
+p <- ggplot(data = melt(qc_counts), aes(x = variable, y = value)) +
+  geom_bar(stat = "identity", aes(fill = Status)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+plot(p)
+```
+
+**Summary:** Good and relatively uniformly mapped data
+
+# Load data
+
+```{r singleFCfile, eval=FALSE}
+# Use if featureCounts processed all BAM files at once
+# Combined matrix
+count.matrix <- read.table(paste0(data_dir, "/counts.txt.gz"), sep = "\t", header = TRUE)
+
+# Separate genes and counts
+genes <- count.matrix[ , grepl("Geneid|Length", colnames(count.matrix))] # Keep columns with annotations
+# Keep counts, and adjust column names
+counts <- count.matrix[ , grepl("bam", colnames(count.matrix))] %>% as.matrix # Keep columns with counts
+colnames(counts) <- sub("X03_sorted.", "", colnames(counts)) # Remove column prefix
+colnames(counts) <- sub("_L003_R1_001_paired.fastq.gz.bam", "", colnames(counts))
+
+# Filter out low expressed genes
+# Should be more than 100% of non-zero values
+# ff <- genefilter::pOverA(p = 1.0, A = 0, na.rm = TRUE) 
+# index <- apply(counts, 1, ff) # Index of rows having non-zero counts
+# counts <- counts[index, ]
+# genes <- genes[index, ]
+# genes$Length <- as.integer(genes$Length)
+# Check is sample annotations anc QC columns match
+all.equal(colnames(counts), sample_annotation$ID)
+```
+
+```{r multiFCfile, eval=TRUE}
+counts   <- cbind() # Count matrix
+count_colnames <- c()     # Count matrix column names
+files_counts <- list.files(path = paste0(data_dir, "03_featureCount/"), pattern = "*.txt.gz")
+for (f in files_counts) {
+  count_data <- read.table(paste0(data_dir, "03_featureCount/", f), sep = "\t", header = TRUE)
+  counts <- cbind(counts, count_data[, grepl("bam", colnames(count_data))]) # Get the "bam", counts column
+  count_colnames <- c(count_colnames, colnames(count_data)[grepl("bam", colnames(count_data))]) # Get the second column name
+}
+# Filter out low expressed genes
+# Should be more than 100% of non-zero values
+ff <- genefilter::pOverA(p = 1.0, A = 0, na.rm = TRUE)
+index <- apply(counts, 1, ff) # Index of rows having non-zero counts
+# Add columns
+colnames(counts) <- count_colnames
+counts <- data.frame(count_data[index, !grepl("bam", colnames(count_data))], counts[index, order(colnames(counts))])
+# Cleanup column names
+colnames(counts) <- sub("X02_subread.align.", "", colnames(counts))
+colnames(counts) <- sub(".bam", "", colnames(counts))
+# Check is sample annotations anc QC columns match
+all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
+```
+
+## Save TPM matrix
+
+```{r eval=FALSE}
+source("calcTPM.R")
+TPM <- calcTPM(data = counts[, 7:ncol(counts)], feature_length = counts[, c("Geneid", "Length")])
+TPM <- data.frame(ensgene = counts[, "Geneid"], TPM)
+TPM <- inner_join(TPM, grcm38, by = "ensgene")
+fileName <- paste0(data_dir, "results/TPM.xlsx")
+unlink(fileName) # Delete previous file
+wb <- openxlsx::createWorkbook(fileName) # openxlsx::loadWorkbook(fileName) # Or, load existing
+save_res(TPM, fileName = fileName, wb = wb, sheetName = "TPM")
+```
+
+# Analysis
+
+Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p.adj`. Top `r top_n` or less DEGs are visualized.
+
+Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average counts_subset Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
+
+Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.
+
+```{r}
+# Save differentially expressed genes
+fileName <- paste0(data_dir, "results/DEGs.xlsx")
+unlink(fileName)
+# Create (or, load)  Excel file
+wb <- openxlsx::createWorkbook(fileName)
+```
+
+## Analysis 1
+
+Project TAM, PyMT cell line
+
+```{r}
+index <- sample_annotation$Project == "TAM" & sample_annotation$Cell.Line == "PyMT"
+sample_annotation_subset <- sample_annotation[index, ]
+counts_subset <- counts[, 7:ncol(counts)]
+counts_subset <- cbind(counts[, 1:6], counts_subset[, index])
+all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(counts_subset)]))
+```
+
+```{r}
+Group <- factor(sample_annotation_subset$Treatment)
+Group <- relevel(Group, ref = "Control")
+Group
+design <- model.matrix(~Group, data = Group)
+```
+
+```{r}
+edgeR.dgelist = DGEList(counts = counts_subset[, 7:ncol(counts_subset)], genes = counts_subset$Geneid, group = Group)
+# Filtering
+keep <- rowSums(cpm(edgeR.dgelist)>1) >= 2
+edgeR.dgelist <- edgeR.dgelist[keep, , keep.lib.sizes=FALSE]
+# Normalization
+edgeR.dgelist = calcNormFactors((edgeR.dgelist), method = "TMM")
+edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
+```
+
+```{r}
+# Get normalized CPMs
+mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
+mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
+```
+
+# Correlation matrix
+
+```{r}
+IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
+plot_annotations <- data.frame(Group = Group)
+rownames(plot_annotations) <- rownames(IAC)
+pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
+```
+
+# Principal Components Analysis
+
+```{r}
+# PCA: Check for batch effects. Select one batch, to color points by its assignment
+pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
+data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
+
+# # What correlates with the first component
+# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
+# for (covariate in covariates){
+#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
+# }
+
+colorby <- "Group" # covariates[2]
+pt <- ggplot(data = data.frame(pca$x, sample_annotation_subset, samples = sample_annotation_subset$Sample, stringsAsFactors = F), 
+             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
+  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
+  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
+  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
+  geom_text_repel(colour = "black", size = 3) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  labs(color = colorby) +
+  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
+  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
+plot(pt)
+
+# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
+```
+
+```{r}
+# One-way ANOVA analysis
+fit <- glmFit(edgeR.dgelist, design)
+# Individual comparisons
+lrt <- glmLRT(fit, coef = 2)
+res <- p.vals(object = lrt, p.adj = p.adj, comparison = "Analysis.1", print_to_file = TRUE)
+# res <- p.vals(object = lrt, p.adj = p.adj, comparison = "DEGs_1", print_to_file = FALSE)
+# res$logFC <- signif(res$logFC)
+# res$logCPM <- signif(res$logCPM)
+# res$LR <- signif(res$LR)
+# res$PValue <- formatC(res$PValue, digits = 3, format = "e")
+# res$FDR <- formatC(res$FDR, digits = 3, format = "e")
+# datatable(res)
+```
+
+# Heatmap of top `r top_n` differentially expressed genes
+
+```{r fig.height=12}
+genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = top_n, comparison = "Analysis.1", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+```
+
+# Functional enrichment analysis
+
+```{r}
+res <- save_enrichr(up.genes = res$symbol, databases = "KEGG_2016", fdr.cutoff = fdr.cutoff, fileName = fileName, wb = wb, sheetName = "KEGG.1")
+```
+
+## Analysis 2
+
+Project TAM, EO771 cell line
+
+```{r}
+index <- sample_annotation$Project == "TAM" & sample_annotation$Cell.Line == "EO771"
+sample_annotation_subset <- sample_annotation[index, ]
+counts_subset <- counts[, 7:ncol(counts)]
+counts_subset <- cbind(counts[, 1:6], counts_subset[, index])
+all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(counts_subset)]))
+```
+
+```{r}
+Group <- factor(sample_annotation_subset$Treatment)
+Group <- relevel(Group, ref = "Control")
+Group
+design <- model.matrix(~Group, data = Group)
+```
+
+```{r}
+edgeR.dgelist = DGEList(counts = counts_subset[, 7:ncol(counts_subset)], genes = counts_subset$Geneid, group = Group)
+# Filtering
+keep <- rowSums(cpm(edgeR.dgelist)>1) >= 2
+edgeR.dgelist <- edgeR.dgelist[keep, , keep.lib.sizes=FALSE]
+# Normalization
+edgeR.dgelist = calcNormFactors((edgeR.dgelist), method = "TMM")
+edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
+```
+
+```{r}
+# Get normalized CPMs
+mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
+mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
+```
+
+# Correlation matrix
+
+```{r}
+IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
+plot_annotations <- data.frame(Group = Group)
+rownames(plot_annotations) <- rownames(IAC)
+pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
+```
+
+# Principal Components Analysis
+
+```{r}
+# PCA: Check for batch effects. Select one batch, to color points by its assignment
+pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
+data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
+
+# # What correlates with the first component
+# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
+# for (covariate in covariates){
+#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
+# }
+
+colorby <- "Group" # covariates[2]
+pt <- ggplot(data = data.frame(pca$x, sample_annotation_subset, samples = sample_annotation_subset$Sample, stringsAsFactors = F), 
+             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
+  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
+  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
+  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
+  geom_text_repel(colour = "black", size = 3) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  labs(color = colorby) +
+  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
+  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
+plot(pt)
+
+# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
+```
+
+```{r}
+# One-way ANOVA analysis
+fit <- glmFit(edgeR.dgelist, design)
+# Individual comparisons
+lrt <- glmLRT(fit, coef = 2)
+res <- p.vals(object = lrt, p.adj = p.adj, comparison = "Analysis.2", print_to_file = TRUE)
+# res <- p.vals(object = lrt, p.adj = p.adj, comparison = "DEGs_1", print_to_file = FALSE)
+# res$logFC <- signif(res$logFC)
+# res$logCPM <- signif(res$logCPM)
+# res$LR <- signif(res$LR)
+# res$PValue <- formatC(res$PValue, digits = 3, format = "e")
+# res$FDR <- formatC(res$FDR, digits = 3, format = "e")
+# datatable(res)
+```
+
+# Heatmap of top `r top_n` differentially expressed genes
+
+```{r fig.height=12}
+genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = top_n, comparison = "Analysis.2", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+```
+
+# Functional enrichment analysis
+
+```{r}
+res <- save_enrichr(up.genes = res$symbol, databases = "KEGG_2016", fdr.cutoff = fdr.cutoff, fileName = fileName, wb = wb, sheetName = "KEGG.2")
+```
+
+## Analysis 3
+
+Project Brain mets, control vs. Tregs ablated
+
+```{r}
+index <- sample_annotation$Project == "Whole Metastatic Brain"
+sample_annotation_subset <- sample_annotation[index, ]
+counts_subset <- counts[, 7:ncol(counts)]
+counts_subset <- cbind(counts[, 1:6], counts_subset[, index])
+all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(counts_subset)]))
+```
+
+```{r}
+Group <- factor(sample_annotation_subset$Treatment)
+Group <- relevel(Group, ref = "Control")
+Group
+design <- model.matrix(~Group, data = Group)
+```
+
+```{r}
+edgeR.dgelist = DGEList(counts = counts_subset[, 7:ncol(counts_subset)], genes = counts_subset$Geneid, group = Group)
+# Filtering
+keep <- rowSums(cpm(edgeR.dgelist)>1) >= 2
+edgeR.dgelist <- edgeR.dgelist[keep, , keep.lib.sizes=FALSE]
+# Normalization
+edgeR.dgelist = calcNormFactors((edgeR.dgelist), method = "TMM")
+edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
+```
+
+```{r}
+# Get normalized CPMs
+mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
+mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
+```
+
+# Correlation matrix
+
+```{r}
+IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
+plot_annotations <- data.frame(Group = Group)
+rownames(plot_annotations) <- rownames(IAC)
+pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
+```
+
+# Principal Components Analysis
+
+```{r}
+# PCA: Check for batch effects. Select one batch, to color points by its assignment
+pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
+data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
+
+# # What correlates with the first component
+# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
+# for (covariate in covariates){
+#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
+# }
+
+colorby <- "Group" # covariates[2]
+pt <- ggplot(data = data.frame(pca$x, sample_annotation_subset, samples = sample_annotation_subset$Sample, stringsAsFactors = F), 
+             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
+  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
+  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
+  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
+  geom_text_repel(colour = "black", size = 3) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  labs(color = colorby) +
+  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
+  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
+plot(pt)
+
+# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
+```
+
+```{r}
+# One-way ANOVA analysis
+fit <- glmFit(edgeR.dgelist, design)
+# Individual comparisons
+lrt <- glmLRT(fit, coef = 2)
+res <- p.vals(object = lrt, p.adj = p.adj, comparison = "Analysis.3", print_to_file = TRUE)
+# res <- p.vals(object = lrt, p.adj = p.adj, comparison = "DEGs_1", print_to_file = FALSE)
+# res$logFC <- signif(res$logFC)
+# res$logCPM <- signif(res$logCPM)
+# res$LR <- signif(res$LR)
+# res$PValue <- formatC(res$PValue, digits = 3, format = "e")
+# res$FDR <- formatC(res$FDR, digits = 3, format = "e")
+# datatable(res)
+```
+
+# Heatmap of top `r top_n` differentially expressed genes
+
+```{r fig.height=12}
+genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = top_n, comparison = "Analysis.3", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+```
+
+# Functional enrichment analysis
+
+```{r}
+res <- save_enrichr(up.genes = res$symbol, databases = "KEGG_2016", fdr.cutoff = fdr.cutoff, fileName = fileName, wb = wb, sheetName = "KEGG.3")
+```
+
+## Analysis 4
+
+Project Astrocytes, control vs. Tregs ablated
+
+```{r}
+index <- sample_annotation$Project == "Reactive Astrocyte"
+sample_annotation_subset <- sample_annotation[index, ]
+counts_subset <- counts[, 7:ncol(counts)]
+counts_subset <- cbind(counts[, 1:6], counts_subset[, index])
+all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(counts_subset)]))
+```
+
+```{r}
+Group <- factor(sample_annotation_subset$Treatment)
+Group <- relevel(Group, ref = "C ontrol")
+Group
+design <- model.matrix(~Group, data = Group)
+```
+
+```{r}
+edgeR.dgelist = DGEList(counts = counts_subset[, 7:ncol(counts_subset)], genes = counts_subset$Geneid, group = Group)
+# Filtering
+keep <- rowSums(cpm(edgeR.dgelist)>1) >= 2
+edgeR.dgelist <- edgeR.dgelist[keep, , keep.lib.sizes=FALSE]
+# Normalization
+edgeR.dgelist = calcNormFactors((edgeR.dgelist), method = "TMM")
+edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
+```
+
+```{r}
+# Get normalized CPMs
+mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
+mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
+```
+
+# Correlation matrix
+
+```{r}
+IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
+plot_annotations <- data.frame(Group = Group)
+rownames(plot_annotations) <- rownames(IAC)
+pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
+```
+
+# Principal Components Analysis
+
+```{r}
+# PCA: Check for batch effects. Select one batch, to color points by its assignment
+pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
+data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
+
+# # What correlates with the first component
+# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
+# for (covariate in covariates){
+#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
+# }
+
+colorby <- "Group" # covariates[2]
+pt <- ggplot(data = data.frame(pca$x, sample_annotation_subset, samples = sample_annotation_subset$Sample, stringsAsFactors = F), 
+             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
+  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
+  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
+  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
+  geom_text_repel(colour = "black", size = 3) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  labs(color = colorby) +
+  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
+  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
+plot(pt)
+
+# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
+```
+
+```{r}
+# One-way ANOVA analysis
+fit <- glmFit(edgeR.dgelist, design)
+# Individual comparisons
+lrt <- glmLRT(fit, coef = 2)
+res <- p.vals(object = lrt, p.adj = p.adj, comparison = "Analysis.4", print_to_file = TRUE)
+# res <- p.vals(object = lrt, p.adj = p.adj, comparison = "DEGs_1", print_to_file = FALSE)
+# res$logFC <- signif(res$logFC)
+# res$logCPM <- signif(res$logCPM)
+# res$LR <- signif(res$LR)
+# res$PValue <- formatC(res$PValue, digits = 3, format = "e")
+# res$FDR <- formatC(res$FDR, digits = 3, format = "e")
+# datatable(res)
+```
+
+# Heatmap of top `r top_n` differentially expressed genes
+
+```{r fig.height=12}
+genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = top_n, comparison = "Analysis.4", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+```
+
+# Functional enrichment analysis
+
+```{r eval=FALSE}
+res <- save_enrichr(up.genes = res$symbol, databases = "KEGG_2016", fdr.cutoff = fdr.cutoff, fileName = fileName, wb = wb, sheetName = "KEGG.4")
+```
+
