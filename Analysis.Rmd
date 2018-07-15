@@ -40,10 +40,22 @@ library(ggplot2)
 library(pheatmap)
 library(enrichR)
 library(annotables) # Annotations of Ensembl IDs
-# Remove non-canonical chromosome names, Mus Musculus
-gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
-gene_annotations <- grcm38[ !duplicated(grcm38) & !is.na(grcm38$symbol) & grcm38$description != "", ]
-all.symbol <- unique(gene_annotations$symbol) # All genes for background
+
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
+
+# Prepate gene annotations, remove non-canonical chromosome names
+if (human_analysis) {
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "description")]
+  gene_annotations <- grch38[ !duplicated(grch38) & !is.na(grch38$symbol) & grch38$description != "", ]
+}
+if (mouse_analysis) {
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
+  gene_annotations <- grcm38[ !duplicated(grcm38) & !is.na(grcm38$symbol) & grcm38$description != "", ]
+}
+# All genes for background
+all.symbol <- unique(gene_annotations$symbol) 
 ```
 
 # Helper functions
