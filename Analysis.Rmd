@@ -51,12 +51,12 @@ all.symbol <- unique(grcm38$symbol) # All genes for background
 ```{r}
 # Function to compare groups
 #' @param object glmLTR result
-#' @param p.adj FDR adjusted p-value cutoff
+#' @param p_adj_cutoff FDR adjusted p-value cutoff
 #' @param subset_by logical vectore defined earlier and used to subset the whole dataset
 #' @param comparison text defining what comparison has been made
 #' @param nplot how many top differential genes to plot
-p.vals <- function(object, p.adj = 0.1, subset_by = subset_by, comparison = "DEGs", nplot = 50, print_to_file = TRUE) {
-  genes.ABC <- topTags(object, n = Inf, p.value = p.adj) %>% as.data.frame # Get all significant genes
+p.vals <- function(object, p_adj_cutoff = 0.1, subset_by = subset_by, comparison = "DEGs", nplot = 50, print_to_file = TRUE) {
+  genes.ABC <- topTags(object, n = Inf, p.value = p_adj_cutoff) %>% as.data.frame # Get all significant genes
   
   # genes.ABC$ensgene <- sapply(genes.ABC$genes, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
   genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), grcm38, by = c("genes" = "ensgene")) # Attach annotations
@@ -111,9 +111,9 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
 
 ```{r}
 data_dir <- "/Users/mdozmorov/Documents/Data/VCU_work/Paula_2018/"
-p.adj <- 0.2
+p_adj_cutoff <- 0.2
 fdr.cutoff <- 0.3
-top_n <- 50
+top_n <- 50 # Maximuim number of genes to plot
 ```
 
 ```{r}
@@ -235,7 +235,7 @@ save_res(TPM, fileName = fileName, wb = wb, sheetName = "TPM")
 
 # Analysis
 
-Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p.adj`. Top `r top_n` or less DEGs are visualized.
+Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. Top `r top_n` or less DEGs are visualized.
 
 Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average counts_subset Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
 
@@ -333,8 +333,8 @@ plot(pt)
 fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
 lrt <- glmLRT(fit, coef = 2)
-res <- p.vals(object = lrt, p.adj = p.adj, comparison = "Analysis.1", print_to_file = TRUE)
-# res <- p.vals(object = lrt, p.adj = p.adj, comparison = "DEGs_1", print_to_file = FALSE)
+res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis.1", print_to_file = TRUE)
+# res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "DEGs_1", print_to_file = FALSE)
 # res$logFC <- signif(res$logFC)
 # res$logCPM <- signif(res$logCPM)
 # res$LR <- signif(res$LR)
