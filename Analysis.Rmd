@@ -40,15 +40,27 @@ library(ggplot2)
 library(pheatmap)
 library(enrichR)
 library(annotables) # Annotations of Ensembl IDs
-# Remove non-canonical chromosome names, Mus Musculus
-grcm38 <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
-grcm38 <- grcm38[ !duplicated(grcm38) & !is.na(grcm38$symbol) & grcm38$description != "", ]
-all.symbol <- unique(grcm38$symbol) # All genes for background
+
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
+
+# Prepate gene annotations, remove non-canonical chromosome names
+if (human_analysis) {
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "description")]
+  gene_annotations <- grch38[ !duplicated(grch38) & !is.na(grch38$symbol) & grch38$description != "", ]
+}
+if (mouse_analysis) {
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
+  gene_annotations <- grcm38[ !duplicated(grcm38) & !is.na(grcm38$symbol) & grcm38$description != "", ]
+}
+# All genes for background
+all.symbol <- unique(gene_annotations$symbol) 
 ```
 
 # Helper functions
 
-```{r}
+```{r p.vals}
 # Function to compare groups
 #' @param object glmLTR result
 #' @param p_adj_cutoff FDR adjusted p-value cutoff
@@ -56,21 +68,22 @@ all.symbol <- unique(grcm38$symbol) # All genes for background
 #' @param comparison text defining what comparison has been made
 #' @param nplot how many top differential genes to plot
 p.vals <- function(object, p_adj_cutoff = 0.1, subset_by = subset_by, comparison = "DEGs", nplot = 50, print_to_file = TRUE) {
+
   genes.ABC <- topTags(object, n = Inf, p.value = p_adj_cutoff) %>% as.data.frame # Get all significant genes
   
   # genes.ABC$ensgene <- sapply(genes.ABC$genes, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
-  genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), grcm38, by = c("genes" = "ensgene")) # Attach annotations
+  genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), gene_annotations, by = c("genes" = "ensgene")) # Attach annotations
   
   if (print_to_file) {
     # Save most significant genes
-    save_res(genes.ABC, fileName, wb = wb, sheetName = comparison) # Save gene list
+    save_res(genes.ABC, fileName_rna, wb = wb, sheetName = comparison) # Save gene list
   }
   # Return actual gene list
   return(genes.ABC)
 }
 ```
 
-```{r}
+```{r genes_to_heatmap}
 # Function to plot and save selected gene lists
 genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, subset_by = c("A", "B"), comparison = "C231_noCRISPR_vs_Negative", clustmethod = "ward", width = 6, height = 8, print_to_file = TRUE) {
   # Select columns to subset
@@ -91,7 +104,7 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
   genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes], genes.to.plot$genes), ] # Make the same order as the genes subsetted from the whole dataset
   matrix.to.plot <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes=TRUE)[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes, subset_index] # * edgeR.dgelist@.Data[[2]]$norm.factors[subset_index] # Subset matrix to plot
   
-  annotation_col <- data.frame(Group = sample_annotation_subset$Treatment[subset_index])
+  annotation_col <- data.frame(Group = sample_annotation_subset$Group[subset_index])
   rownames(annotation_col) <- colnames(cpm(edgeR.dgelist)[, subset_index])
   
   # Save to PDF
@@ -107,26 +120,69 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
 }
 ```
 
+```{r genes_to_boxplot}
+# A function to plot a barplot of selected genes in selected conditions
+genes_to_boxplot <- function(selected_genes = c("NF1", "SND1", "MTDH"), subset_by = c("C", "AA")) {
+  # Select columns to subset
+    # subset_index <- grepl(paste(subset_by, collapse = "|"), sample_annotation$Group) 
+  subset_index <- sample_annotation$Group == subset_by[1] | sample_annotation$Group == subset_by[2]
+  # Select EntrezIDs to plot
+  genes.to.plot <- gene_annotations[gene_annotations$symbol %in% selected_genes, ]
+  genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene], genes.to.plot$ensgene), ] # Make the same order as the genes subsetted from the whole dataset
+  # Expression of genes to plot
+  matrix.to.plot <- cpm(edgeR.dgelist, log = TRUE)
+  index_to_keep  <- edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene
+  matrix.to.plot <- matrix.to.plot[index_to_keep, subset_index, drop = FALSE] 
+  rownames(matrix.to.plot) <- edgeR.dgelist@.Data[[3]]$genes[index_to_keep]
+  colnames(matrix.to.plot) <- sample_annotation$Group[subset_index]
+  # Add genes
+  matrix.to.plot <- data.frame(Gene = genes.to.plot$symbol[match(rownames(matrix.to.plot), genes.to.plot$ensgene)], matrix.to.plot, check.names = FALSE)
+  
+  matrix.to.plot_melted <- melt(matrix.to.plot, id.vars = "Gene", measure.vars = colnames(matrix.to.plot)[colnames(matrix.to.plot) != "Gene"])
+  matrix.to.plot_melted$Gene     <- as.character(matrix.to.plot_melted$Gene) # factor(matrix.to.plot_melted$Gene, levels = unique(matrix.to.plot_melted$Gene))
+  matrix.to.plot_melted$variable <- as.character(matrix.to.plot_melted$variable) # factor(matrix.to.plot_melted$variable %>% as.character(), levels = unique(matrix.to.plot_melted$variable %>% as.character()))
+  # Plot
+  ggplot(matrix.to.plot_melted, aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    # geom_bar(stat = "summary", fun.y = "mean") +
+    facet_wrap(~ Gene, ncol = 3, scales = "free_y")
+}
+```
+
+
 # Settings
 
 ```{r}
-data_dir <- "/Users/mdozmorov/Documents/Data/VCU_work/Paula_2018/"
-p_adj_cutoff <- 0.2
-fdr.cutoff <- 0.3
-top_n <- 50 # Maximuim number of genes to plot
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Devanand_2018/" # Working directory
+fileName_rna   <- paste0(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
+fileName_tpm   <- paste0(data_dir, "results/TPM.xlsx")  # File to save TPM values
+p_val_cutoff   <- 0.05 # Regular p-value cutoff
+p_adj_cutoff   <- 0.05 # FDR cutoff
+nplot          <- 50 # How many genes to plot on a heatmap
+nbox           <- 9  # How many genes to plot on a boxplot
+ntable         <- 15 # Number of genes to output in a DEG table
+nkegg          <- 35 # Number of genes to output in a KEGG table
+min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
+max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 ```
 
 ```{r}
-# Adjust path to sample annotation file
-# Annotation file should have "Sample" column with sample names, and any other annotation columns
+# Adjust path to sample annotation file, comma-separated
+# Annotation file should have "Sample" column with sample names, and any other annotation columns. 
+# Include "Group" column containing covariate of interest. Example:
+# Sample,Group
+# VLI10_AA_S61_L006_R1_001.txt.gz,AA
+# VLI10_AA_S61_L007_R1_001.txt.gz,AA
+# VLI10_AA_S61_L008_R1_001.txt.gz,AA
+# VLI11_C_S62_L006_R1_001.txt.gz,C
+# VLI11_C_S62_L007_R1_001.txt.gz,C
+# VLI11_C_S62_L008_R1_001.txt.gz,C
+
 sample_annotation <- read.csv(paste0(data_dir, "data/sample_annotation.csv"))
 sample_annotation$Sample <- make.names(sample_annotation$Sample)
 sample_annotation <- sample_annotation[order(sample_annotation$Sample), ]
-# Explicitly make factors
-sample_annotation$Project   <- factor(sample_annotation$Project)
-sample_annotation$Cell.Line <- factor(sample_annotation$Cell.Line)
-sample_annotation$Treatment <- factor(sample_annotation$Treatment)
-sample_annotation$Lane      <- factor(sample_annotation$Lane)
+# Explicitly make factors. Manually adjust for all columns in the sample annotation file
+sample_annotation$Group   <- factor(sample_annotation$Group)
 ```
 
 # QC
@@ -216,6 +272,11 @@ counts <- data.frame(count_data[index, !grepl("bam", colnames(count_data))], cou
 # Cleanup column names
 colnames(counts) <- sub("X02_subread.align.", "", colnames(counts))
 colnames(counts) <- sub(".bam", "", colnames(counts))
+# Human Ensembl IDs are in the form "ENSG00000225630.1". We need to remove the last part with dot
+if (human_analysis) {
+  counts$Geneid <- sapply(counts$Geneid, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
+}
+
 # Check is sample annotations anc QC columns match
 all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
 ```
@@ -226,11 +287,12 @@ all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
 source("calcTPM.R")
 TPM <- calcTPM(data = counts[, 7:ncol(counts)], feature_length = counts[, c("Geneid", "Length")])
 TPM <- data.frame(ensgene = counts[, "Geneid"], TPM)
-TPM <- inner_join(TPM, grcm38, by = "ensgene")
-fileName <- paste0(data_dir, "results/TPM.xlsx")
-unlink(fileName) # Delete previous file
-wb <- openxlsx::createWorkbook(fileName) # openxlsx::loadWorkbook(fileName) # Or, load existing
-save_res(TPM, fileName = fileName, wb = wb, sheetName = "TPM")
+# Add gene description
+TPM <- inner_join(TPM, gene_annotations, by = "ensgene")
+
+unlink(fileName_tpm) # Delete previous file
+wb <- openxlsx::createWorkbook(fileName_tpm) # openxlsx::loadWorkbook(fileName) # Or, load existing
+save_res(TPM, fileName = fileName_tpm, wb = wb, sheetName = "TPM")
 ```
 
 # Analysis
@@ -241,20 +303,24 @@ Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Le
 
 Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.
 
+
 ```{r}
 # Save differentially expressed genes
-fileName <- paste0(data_dir, "results/DEGs.xlsx")
-unlink(fileName)
+unlink(fileName_rna)
 # Create (or, load)  Excel file
-wb <- openxlsx::createWorkbook(fileName)
+wb <- openxlsx::createWorkbook(fileName_rna)
 ```
 
 ## Analysis 1
 
-Project TAM, PyMT cell line
+"AA" vs. "C" comparison
 
 ```{r}
-index <- sample_annotation$Project == "TAM" & sample_annotation$Cell.Line == "PyMT"
+# Subset the data, adjust manually
+# index <- sample_annotation$Project == "TAM" & sample_annotation$Cell.Line == "PyMT"
+# Or, use all the data
+index <- sample_annotation$Sample == sample_annotation$Sample
+
 sample_annotation_subset <- sample_annotation[index, ]
 counts_subset <- counts[, 7:ncol(counts)]
 counts_subset <- cbind(counts[, 1:6], counts_subset[, index])
@@ -262,8 +328,9 @@ all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(count
 ```
 
 ```{r}
-Group <- factor(sample_annotation_subset$Treatment)
-Group <- relevel(Group, ref = "Control")
+# Adjust manually
+Group <- factor(sample_annotation_subset$Group)
+Group <- relevel(Group, ref = "C")
 Group
 design <- model.matrix(~Group, data = Group)
 ```
@@ -284,7 +351,7 @@ mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
 mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
 ```
 
-# Correlation matrix
+### Correlation matrix
 
 ```{r}
 IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
@@ -293,7 +360,7 @@ rownames(plot_annotations) <- rownames(IAC)
 pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
 ```
 
-# Principal Components Analysis
+### Principal Components Analysis
 
 ```{r}
 # PCA: Check for batch effects. Select one batch, to color points by its assignment
@@ -328,12 +395,24 @@ plot(pt)
 # ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
 ```
 
+### Differentially expressed genes
+
+- Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. See the total number in the table' annotations. Top `r nplot` or less DEGs are visualized.
+
+Lists of differentially expressed genes are stored in Excel file `r fileName_rna`
+
+**Legend for gene lists:** "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average Counts Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
+
+**Legend for GO/KEGG functional enrichment results:** "ID" - unique identifier of functional category; "Pvalue" - non-adjusted p-value; "OddsRatio" - enrichment odds ratio; "ExpCount" - number of genes expected to be selected in a category; "Count" - number of genes observed in the current list; "Size" - total number of genes in a category; "Term" - category description; "p.adj" - false discovery rate; "SYMBOL", "ENTREZ" - genes observed in the current list as annotated with a category
+
 ```{r}
 # One-way ANOVA analysis
 fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
 lrt <- glmLRT(fit, coef = 2)
-res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis.1", print_to_file = TRUE)
+
+res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_1", print_to_file = TRUE)
+
 # res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "DEGs_1", print_to_file = FALSE)
 # res$logFC <- signif(res$logFC)
 # res$logCPM <- signif(res$logCPM)
@@ -343,14 +422,44 @@ res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis.
 # datatable(res)
 ```
 
-# Heatmap of top `r top_n` differentially expressed genes
+Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated.
 
 ```{r fig.height=12}
-genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = top_n, comparison = "Analysis.1", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+if (nrow(res) > 0) {
+  res[, c(3, 4, 5)] <- round(res[, c(3, 4, 5)], 2)
+  res[, c(6)] <- formatC(res[, c(6)], format = "e", digits = 2)
+  res[, c(7)] <- formatC(res[, c(7)], format = "e", digits = 2)
+  kable(res[1:min(ntable, nrow(res)), ])
+}
 ```
 
-# Functional enrichment analysis
+### Boxplots of top `r nbox` genes
+
+Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium expression level. Possible negative values mean a gene is very low expressed and was adjusted into negative range by normalization.
 
 ```{r}
-res <- save_enrichr(up.genes = res$symbol, databases = "KEGG_2016", fdr.cutoff = fdr.cutoff, fileName = fileName, wb = wb, sheetName = "KEGG.1")
+if (nrow(res) > 0)
+  genes_to_boxplot(selected_genes = res$symbol[1:nbox], subset_by = c("C", "AA"))
+```
+
+### Heatmap of top `r nplot` differentially expressed genes
+
+```{r fig.height=12}
+if (nrow(res) > 0)
+  genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = nplot, comparison = "Analysis_1", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+```
+
+### KEGG pathways for all differentially expressed genes
+
+```{r}
+if (nrow(res) > min_kegg_genes) {
+    up.genes <- unique(res$symbol)[1:min(length(unique(res$symbol)), max_kegg_genes)]
+    res.kegg <- save_enrichr(up.genes = up.genes, databases = "KEGG_2016", fileName = fileName_rna, wb = wb, sheetName = "KEGG_1" )
+  if (nrow(res.kegg) > 0) {
+    kable(res.kegg[1:min(nkegg, nrow(res.kegg)), ])
+  }
+} else {
+  print("Insufficient data to run KEGG enrichment analysis")
+}
+
 ```
