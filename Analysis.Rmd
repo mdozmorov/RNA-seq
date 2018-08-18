@@ -149,6 +149,50 @@ genes_to_boxplot <- function(selected_genes = c("NF1", "SND1", "MTDH"), subset_b
 }
 ```
 
+```{r summarize_se}
+## Gives count, mean, standard deviation, standard error of the mean, and confidence interval (default 95%).
+##   data: a data frame.
+##   measurevar: the name of a column that contains the variable to be summariezed
+##   groupvars: a vector containing names of columns that contain grouping variables
+##   na.rm: a boolean that indicates whether to ignore NA's
+##   conf.interval: the percent range of the confidence interval (default is 95%)
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+
+    return(datac)
+}
+```
+
 
 # Settings
 
@@ -164,6 +208,7 @@ ntable         <- 15 # Number of genes to output in a DEG table
 nkegg          <- 35 # Number of genes to output in a KEGG table
 min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
 max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
+up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
 ```
 
 ```{r}
@@ -348,6 +393,7 @@ edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
 ```{r}
 # Get normalized CPMs
 mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
+rownames(mtx) <- edgeR.dgelist@.Data[[3]][, "genes"]
 mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
 ```
 
@@ -461,5 +507,48 @@ if (nrow(res) > min_kegg_genes) {
 } else {
   print("Insufficient data to run KEGG enrichment analysis")
 }
+```
 
+## Expression barplots of selected genes
+
+```{r fig.height=3, fig.width=5}
+selected_genes <- c("ISG15", "OAS1", "MX1", "IFI6", "IFIT1", "IFITM1", "IFIT3")
+# Gen Ensembl IDs
+selected_gene_annotations <- gene_annotations[ gene_annotations$symbol %in% selected_genes, ]
+
+selected_genes_expr <- mtx[rownames(mtx) %in% selected_gene_annotations$ensgene, ]
+# Match order
+selected_genes_expr[match(selected_gene_annotations$ensgene, rownames(selected_genes_expr)), ]
+# Replace row names by gene symbols
+rownames(selected_genes_expr) <- selected_gene_annotations$symbol
+# Reassign columns to groups
+colnames(selected_genes_expr) <- ifelse(sample_annotation$Group == "C", "White", "Black, or AA") %>% as.character()
+
+# Reshape the data
+gdata <- reshape2::melt(selected_genes_expr)
+colnames(gdata) <- c("Gene", "Race", "value")
+
+# ggplot(gdata, aes(x = gene, y = value, fill = group)) + geom_boxplot()
+# ggplot(gdata, aes(x = cancer, y = value, fill = variable)) + geom_bar(position=position_dodge(), stat = "summary", fun.y = "mean")
+
+# http://www.cookbook-r.com/Graphs/Plotting_means_and_error_bars_(ggplot2)/
+gdata_summary <- summarySE(gdata, measurevar="value", groupvars=c("Gene", "Race"))
+
+ggplot(gdata_summary, aes(x = Gene, y = value, fill = Race)) + 
+    geom_bar(position=position_dodge(), stat="identity",
+             colour="black", # Use black outlines,
+             size=.3) +      # Thinner lines
+    geom_errorbar(aes(ymin=value-se, ymax=value+se),
+                  size=.3,    # Thinner lines
+                  width=.2,
+                  position=position_dodge(.9)) +
+    xlab("Gene") +
+    ylab("log2 expression") +
+    # scale_fill_hue(name="Gene", # Legend label, use darker colors
+    #                breaks=selected_genes,
+    #                labels=selected_genes) +
+    ggtitle("Expression of selected genes in different races") +
+    scale_y_continuous(breaks=0:20*4) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
