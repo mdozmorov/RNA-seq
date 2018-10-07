@@ -48,11 +48,11 @@ mouse_analysis <- FALSE
 # Prepate gene annotations, remove non-canonical chromosome names
 if (human_analysis) {
   gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "description")]
-  gene_annotations <- grch38[ !duplicated(grch38) & !is.na(grch38$symbol) & grch38$description != "", ]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
 }
 if (mouse_analysis) {
   gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
-  gene_annotations <- grcm38[ !duplicated(grcm38) & !is.na(grcm38$symbol) & grcm38$description != "", ]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
 }
 # All genes for background
 all.symbol <- unique(gene_annotations$symbol) 
