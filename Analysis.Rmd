@@ -125,7 +125,7 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
 genes_to_boxplot <- function(selected_genes = c("NF1", "SND1", "MTDH"), subset_by = c("C", "AA")) {
   # Select columns to subset
     # subset_index <- grepl(paste(subset_by, collapse = "|"), sample_annotation$Group) 
-  subset_index <- sample_annotation$Group == subset_by[1] | sample_annotation$Group == subset_by[2]
+  subset_index <- sample_annotation_subset$Group == subset_by[1] | sample_annotation_subset$Group == subset_by[2]
   # Select EntrezIDs to plot
   genes.to.plot <- gene_annotations[gene_annotations$symbol %in% selected_genes, ]
   genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene], genes.to.plot$ensgene), ] # Make the same order as the genes subsetted from the whole dataset
@@ -134,7 +134,7 @@ genes_to_boxplot <- function(selected_genes = c("NF1", "SND1", "MTDH"), subset_b
   index_to_keep  <- edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene
   matrix.to.plot <- matrix.to.plot[index_to_keep, subset_index, drop = FALSE] 
   rownames(matrix.to.plot) <- edgeR.dgelist@.Data[[3]]$genes[index_to_keep]
-  colnames(matrix.to.plot) <- sample_annotation$Group[subset_index]
+  colnames(matrix.to.plot) <- sample_annotation_subset$Group[subset_index]
   # Add genes
   matrix.to.plot <- data.frame(Gene = genes.to.plot$symbol[match(rownames(matrix.to.plot), genes.to.plot$ensgene)], matrix.to.plot, check.names = FALSE)
   
