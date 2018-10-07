@@ -484,8 +484,10 @@ if (nrow(res) > 0) {
 Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium expression level. Possible negative values mean a gene is very low expressed and was adjusted into negative range by normalization.
 
 ```{r}
-if (nrow(res) > 0)
-  genes_to_boxplot(selected_genes = res$symbol[1:nbox], subset_by = c("C", "AA"))
+if (nrow(res) > 0) {
+  selected_genes = unique(res$symbol[!is.na(res$symbol)])
+  genes_to_boxplot(selected_genes = selected_genes[1:nbox], subset_by = c("WT_minus_Dex", "KO_minus_Dex"))
+}
 ```
 
 ### Heatmap of top `r nplot` differentially expressed genes
