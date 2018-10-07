@@ -472,9 +472,9 @@ Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$
 
 ```{r fig.height=12}
 if (nrow(res) > 0) {
-  res[, c(3, 4, 5)] <- round(res[, c(3, 4, 5)], 2)
-  res[, c(6)] <- formatC(res[, c(6)], format = "e", digits = 2)
-  res[, c(7)] <- formatC(res[, c(7)], format = "e", digits = 2)
+  res[, c("logFC", "logCPM", "LR")] <- round(res[, c("logFC", "logCPM", "LR")], 2)
+  res[, c("PValue")] <- formatC(res[, c("PValue")], format = "e", digits = 2)
+  res[, c("FDR")] <- formatC(res[, c("FDR")], format = "e", digits = 2)
   kable(res[1:min(ntable, nrow(res)), ])
 }
 ```
