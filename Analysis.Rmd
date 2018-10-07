@@ -342,7 +342,7 @@ save_res(TPM, fileName = fileName_tpm, wb = wb, sheetName = "TPM")
 
 # Analysis
 
-Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. Top `r top_n` or less DEGs are visualized.
+Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. Top `r nplot` or less DEGs are visualized.
 
 Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average counts_subset Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
 
