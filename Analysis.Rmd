@@ -309,8 +309,9 @@ for (f in files_counts) {
 }
 # Filter out low expressed genes
 # Should be more than 100% of non-zero values
-ff <- genefilter::pOverA(p = 1.0, A = 0, na.rm = TRUE)
-index <- apply(counts, 1, ff) # Index of rows having non-zero counts
+# ff <- genefilter::pOverA(p = 1.0, A = 0, na.rm = TRUE)
+# index <- apply(counts, 1, ff) # Index of rows having non-zero counts
+index <- rep(TRUE, nrow(counts)) # Use all counts
 # Add columns
 colnames(counts) <- count_colnames
 counts <- data.frame(count_data[index, !grepl("bam", colnames(count_data))], counts[index, order(colnames(counts))])
