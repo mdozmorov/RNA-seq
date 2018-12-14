@@ -1,0 +1,226 @@
+---
+title: "Functional enrichment analysis plots"
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+always_allow_html: yes
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: cerulean
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=T, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is', fig.width = 10, fig.height = 6) #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+```{r}
+library(openxlsx)
+library(clusterProfiler)
+library(MDmisc)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+# Settings
+
+```{r echo=TRUE}
+# File name with the results of edgeR analysis
+fileName <- "results/DEGs_C231_CRISPR1_vs_231_noCRISPR_hg38.xlsx"
+logFC    <- TRUE      # Are we using column 3: "logFC" or 6: "PValue"?
+# Analysis settings
+max_kegg_genes = 2000 # Maximum number of genes to run enrichment analysis on
+max_GO_to_plot = 12   # Maximum number of GOs to plot
+nperm = 10000         # Number of permutations
+```
+
+```{r}
+# Human or mouse selection
+human <- TRUE
+if (human) {
+  library(org.Hs.eg.db)
+  org_db   <- "org.Hs.eg.db" # for gseGO
+  org_kegg <- "hsa"          # for gseKEGG
+} else {
+  library(org.Mm.eg.db)
+  org_db   <- "org.Mm.eg.db" # for gseGO
+  org_kegg <- "mmu"          # for gseKEGG
+}
+set.seed(1)
+```
+
+```{r}
+# Get gene IDs and the corresponding effect size
+degs.all <- read.xlsx(fileName, sheet = 1, cols = c(1, 3, 6)) # edgeR output in the 1st sheet, columns 1: "Geneid", 3: "logFC" 6: "PValue"
+if (logFC) { # Select genes by maximum logFC
+  degs.all <- degs.all[order(abs(degs.all$logFC), decreasing = TRUE), ] # Sort by absolute logFC
+  degs.all <- degs.all[1:min(nrow(degs.all), max_kegg_genes), ]         # Select maximum number of genes, or less
+  # Convert symbols to entrezids
+  eid <- bitr(degs.all$Geneid, fromType="ENSEMBL", toType="ENTREZID", OrgDb=org_db)
+  # Attach converted entrezids
+  degs.all <- left_join(degs.all, eid, by = c("Geneid" = "ENSEMBL"))
+  degs.all <- degs.all[ complete.cases(degs.all), ] # Keep only successfully converted entries
+  # Prepare gene list
+  geneList <- degs.all$logFC           # Use raw logFC
+  names(geneList) <- degs.all$ENTREZID # Make it named
+  geneList <- geneList[order(geneList, decreasing = TRUE)] # Sort
+} else { # Select genes by smallest p-value
+  degs.all <- degs.all[order(degs.all$PValue, decreasing = FALSE), ] # Sort by smallest p-value
+  degs.all <- degs.all[1:min(nrow(degs.all), max_kegg_genes), ]      # Select maximum number of genes, or less
+  # Convert symbols to entrezids
+  eid <- bitr(degs.all$Geneid, fromType="ENSEMBL", toType="ENTREZID", OrgDb=org_db)
+  # Attach converted entrezids
+  degs.all <- left_join(degs.all, eid, by = c("Geneid" = "ENSEMBL"))
+  degs.all <- degs.all[ complete.cases(degs.all), ] # Keep only successfully converted entries
+  # Prepare gene list
+  geneList <- -log10(degs.all$PValue)  # Use -log10-transformed 
+  names(geneList) <- degs.all$ENTREZID # Make it named
+  geneList <- geneList[order(geneList, decreasing = TRUE)] # Sort
+}
+```
+
+Brief Methods: Gene Set Enrichment Analysis (GSEA [PMID: 16199517]) was performed on differentially expressed genes ranked by `r ifelse(logFC, "log-Fold Change", "p-value")` using `clusterProfiler` `r Biobase::package.version("clusterProfiler")`. `r nperm` permutations were performed to estimate permutation-based enrichment p-value. 
+
+Gene Ontology has three domains - "Molecular Function", "Biological Process", and "Cellular Component". Enrichment analyses is done separately for each.
+
+# Gene Ontology: Molecular Vunction
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler
+ego3 <-   gseGO(geneList     = geneList,
+                ont          = "MF",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+ego3.summary <- as.data.frame(ego3)
+# Proceed to plotting, if enrichments are available
+if (nrow(ego3.summary) > 0) {
+  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
+    geom_bar(stat = "Identity", width = 0.8) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "-log10(enrichment p-value)")
+}
+```
+
+# Gene Ontology: Biological processes
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler
+ego3 <-   gseGO(geneList     = geneList,
+                ont          = "BP",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+ego3.summary <- as.data.frame(ego3)
+# Proceed to plotting, if enrichments are available
+if (nrow(ego3.summary) > 0) {
+  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
+    geom_bar(stat = "Identity", width = 0.8) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "-log10(enrichment p-value)")
+}
+```
+
+# Gene Ontology: Cellular Component
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler
+ego3 <-   gseGO(geneList     = geneList,
+                ont          = "MF",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+ego3.summary <- as.data.frame(ego3)
+# Proceed to plotting, if enrichments are available
+if (nrow(ego3.summary) > 0) {
+  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
+    geom_bar(stat = "Identity", width = 0.8) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "-log10(enrichment p-value)")
+}
+```
+
+# KEGG canonical pathways
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler
+ego3 <-   gseKEGG(geneList     = geneList,
+                  organism     = org_kegg,
+                  keyType      = "kegg",
+                  nPerm        = nperm,
+                  minGSSize    = 10,
+                  pvalueCutoff = 0.1,
+                  verbose      = FALSE)
+ego3.summary <- as.data.frame(ego3)
+# Proceed to plotting, if enrichments are available
+if (nrow(ego3.summary) > 0) {
+  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
+    geom_bar(stat = "Identity", width = 0.8) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "-log10(enrichment p-value)")
+}
+```
+
+
+
+
+```{r eval=FALSE}
+# Standard enrichment analysis
+mtx <- read.xlsx(fileName, sheet = 1)
+ego <- enrichGO(gene          = mtx$Geneid[1:max_kegg_genes],
+                OrgDb         = org_db,
+                keyType       = 'ENSEMBL',
+                ont           = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05)
+ego_summary <- summary(ego)
+barplot(ego, showCategory = max_GO_to_plot, x = "Count", colorBy = "pvalue")#, order = TRUE)
+dotplot(ego)
+```
