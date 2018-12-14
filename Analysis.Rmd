@@ -197,7 +197,7 @@ summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
 # Settings
 
 ```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Devanand_2018_3/" # Working directory
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Devanand_2018/" # Working directory
 fileName_rna   <- paste0(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
 fileName_tpm   <- paste0(data_dir, "results/TPM.xlsx")  # File to save TPM values
 p_val_cutoff   <- 0.05 # Regular p-value cutoff
@@ -359,13 +359,13 @@ wb <- openxlsx::createWorkbook(fileName_rna)
 
 ## Analysis 1
 
-"T7" vs. "C2" comparison
+"AA" vs. "C" comparison
 
 ```{r}
 # Subset the data, adjust manually
-index <- sample_annotation$Group == "T7" | sample_annotation$Group == "C2"
+# index <- sample_annotation$Project == "TAM" & sample_annotation$Cell.Line == "PyMT"
 # Or, use all the data
-# index <- sample_annotation$Sample == sample_annotation$Sample
+index <- sample_annotation$Sample == sample_annotation$Sample
 
 sample_annotation_subset <- sample_annotation[index, ]
 counts_subset <- counts[, 7:ncol(counts)]
@@ -376,7 +376,7 @@ all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(count
 ```{r}
 # Adjust manually
 Group <- factor(sample_annotation_subset$Group)
-Group <- relevel(Group, ref = "C2")
+Group <- relevel(Group, ref = "C")
 Group
 design <- model.matrix(~Group, data = Group)
 ```
@@ -487,7 +487,7 @@ Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium e
 ```{r}
 if (nrow(res) > 0) {
   selected_genes = unique(res$symbol[!is.na(res$symbol)])
-  genes_to_boxplot(selected_genes = selected_genes[1:nbox], subset_by = c("C2", "T7"))
+  genes_to_boxplot(selected_genes = selected_genes[1:nbox], subset_by = c("WT_minus_Dex", "KO_minus_Dex"))
 }
 ```
 
@@ -515,7 +515,7 @@ if (nrow(res) > min_kegg_genes) {
 ## Expression barplots of selected genes
 
 ```{r fig.height=3, fig.width=5}
-selected_genes <- c("TAF2", "MTDH", "SND1")
+selected_genes <- c("ISG15", "OAS1", "MX1", "IFI6", "IFIT1", "IFITM1", "IFIT3")
 # Gen Ensembl IDs
 selected_gene_annotations <- gene_annotations[ gene_annotations$symbol %in% selected_genes, ]
 
@@ -525,19 +525,19 @@ selected_genes_expr[match(selected_gene_annotations$ensgene, rownames(selected_g
 # Replace row names by gene symbols
 rownames(selected_genes_expr) <- selected_gene_annotations$symbol
 # Reassign columns to groups
-colnames(selected_genes_expr) <- ifelse(sample_annotation_subset$Group == "C2", "C2", "T7") %>% as.character()
+colnames(selected_genes_expr) <- ifelse(sample_annotation$Group == "C", "White", "Black, or AA") %>% as.character()
 
 # Reshape the data
 gdata <- reshape2::melt(selected_genes_expr)
-colnames(gdata) <- c("Gene", "Group", "value")
+colnames(gdata) <- c("Gene", "Race", "value")
 
 # ggplot(gdata, aes(x = gene, y = value, fill = group)) + geom_boxplot()
 # ggplot(gdata, aes(x = cancer, y = value, fill = variable)) + geom_bar(position=position_dodge(), stat = "summary", fun.y = "mean")
 
 # http://www.cookbook-r.com/Graphs/Plotting_means_and_error_bars_(ggplot2)/
-gdata_summary <- summarySE(gdata, measurevar="value", groupvars=c("Gene", "Group"))
+gdata_summary <- summarySE(gdata, measurevar="value", groupvars=c("Gene", "Race"))
 
-ggplot(gdata_summary, aes(x = Gene, y = value, fill = Group)) + 
+ggplot(gdata_summary, aes(x = Gene, y = value, fill = Race)) + 
     geom_bar(position=position_dodge(), stat="identity",
              colour="black", # Use black outlines,
              size=.3) +      # Thinner lines
@@ -555,5 +555,3 @@ ggplot(gdata_summary, aes(x = Gene, y = value, fill = Group)) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
-
-
