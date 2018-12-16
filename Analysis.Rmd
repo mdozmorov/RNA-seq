@@ -38,6 +38,7 @@ library(org.Mm.eg.db)
 library(shiny)
 library(ggplot2)
 library(pheatmap)
+# devtools::install_github("mdozmorov/enrichR")
 library(enrichR)
 library(annotables) # Annotations of Ensembl IDs
 
@@ -525,7 +526,7 @@ selected_genes_expr[match(selected_gene_annotations$ensgene, rownames(selected_g
 # Replace row names by gene symbols
 rownames(selected_genes_expr) <- selected_gene_annotations$symbol
 # Reassign columns to groups
-colnames(selected_genes_expr) <- ifelse(sample_annotation$Group == "C", "White", "Black, or AA") %>% as.character()
+colnames(selected_genes_expr) <- ifelse(sample_annotation_subset$Group == "C", "White", "Black, or AA") %>% as.character()
 
 # Reshape the data
 gdata <- reshape2::melt(selected_genes_expr)
