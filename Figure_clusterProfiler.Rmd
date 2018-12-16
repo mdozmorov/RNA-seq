@@ -289,7 +289,7 @@ if (nrow(ego3.dn.summary) > 0) {
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
-ego3 <-   gseGO(geneList.all     = geneList.all,
+ego3 <-   gseGO(geneList     = geneList.all,
                 ont          = "CC",
                 OrgDb        = org_db,
                 nPerm        = nperm,
