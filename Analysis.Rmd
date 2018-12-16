@@ -513,7 +513,7 @@ if (nrow(res) > min_kegg_genes) {
 }
 ```
 
-## Expression barplots of selected genes
+### Expression barplots of selected genes
 
 ```{r fig.height=3, fig.width=5}
 selected_genes <- c("ISG15", "OAS1", "MX1", "IFI6", "IFIT1", "IFITM1", "IFIT3")
@@ -551,7 +551,7 @@ ggplot(gdata_summary, aes(x = Gene, y = value, fill = Race)) +
     # scale_fill_hue(name="Gene", # Legend label, use darker colors
     #                breaks=selected_genes,
     #                labels=selected_genes) +
-    ggtitle("Expression of selected genes in different races") +
+    ggtitle("Expression of selected genes in different groups") +
     scale_y_continuous(breaks=0:20*4) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
