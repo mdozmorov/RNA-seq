@@ -28,6 +28,7 @@ library(clusterProfiler)
 library(MDmisc)
 library(ggplot2)
 library(RColorBrewer)
+library(cowplot)
 ```
 
 # Settings
@@ -68,10 +69,15 @@ if (logFC) { # Select genes by maximum logFC
   # Attach converted entrezids
   degs.all <- left_join(degs.all, eid, by = c("Geneid" = "ENSEMBL"))
   degs.all <- degs.all[ complete.cases(degs.all), ] # Keep only successfully converted entries
-  # Prepare gene list
-  geneList <- degs.all$logFC           # Use raw logFC
-  names(geneList) <- degs.all$ENTREZID # Make it named
-  geneList <- geneList[order(geneList, decreasing = TRUE)] # Sort
+  # Prepare full gene list
+  geneList.all <- degs.all$logFC           # Use raw logFC
+  names(geneList.all) <- degs.all$ENTREZID # Make it named
+  geneList.all <- geneList.all[order(geneList.all, decreasing = TRUE)] # Sort
+  # Prepare separate up- and downregulated gene lists
+  geneList.up  <- geneList.all[geneList.all > 0]
+  geneList.up  <- geneList.up[order(geneList.up, decreasing = TRUE)]
+  geneList.dn  <- geneList.all[geneList.all < 0]
+  geneList.dn  <- geneList.dn[order(geneList.dn, decreasing = TRUE)]
 } else { # Select genes by smallest p-value
   degs.all <- degs.all[order(degs.all$PValue, decreasing = FALSE), ] # Sort by smallest p-value
   degs.all <- degs.all[1:min(nrow(degs.all), max_kegg_genes), ]      # Select maximum number of genes, or less
@@ -80,10 +86,17 @@ if (logFC) { # Select genes by maximum logFC
   # Attach converted entrezids
   degs.all <- left_join(degs.all, eid, by = c("Geneid" = "ENSEMBL"))
   degs.all <- degs.all[ complete.cases(degs.all), ] # Keep only successfully converted entries
-  # Prepare gene list
-  geneList <- -log10(degs.all$PValue)  # Use -log10-transformed 
-  names(geneList) <- degs.all$ENTREZID # Make it named
-  geneList <- geneList[order(geneList, decreasing = TRUE)] # Sort
+  # Prepare full gene list
+  geneList.all <- -log10(degs.all$PValue)  # Use -log10-transformed 
+  names(geneList.all) <- degs.all$ENTREZID # Make it named
+  geneList.all <- geneList.all[order(geneList.all, decreasing = TRUE)] # Sort
+  # Prepare separate up- and downregulated gene lists
+  geneList.up        <- -log10(degs.all$PValue[degs.all$logFC > 0])
+  names(geneList.up) <- degs.all$ENTREZID[degs.all$logFC > 0]
+  geneList.up        <- geneList.up[order(geneList.up, decreasing = TRUE)]
+  geneList.dn        <- -log10(degs.all$PValue[degs.all$logFC < 0])
+  names(geneList.dn) <- degs.all$ENTREZID[degs.all$logFC < 0]
+  geneList.dn        <- geneList.dn[order(geneList.dn, decreasing = TRUE)]
 }
 ```
 
@@ -91,11 +104,11 @@ Brief Methods: Gene Set Enrichment Analysis (GSEA [PMID: 16199517]) was performe
 
 Gene Ontology has three domains - "Molecular Function", "Biological Process", and "Cellular Component". Enrichment analyses is done separately for each.
 
-# Gene Ontology: Molecular Vunction
+# Gene Ontology: Molecular Function, all genes
 
-```{r fig.height=3}
-## GSEA Gene Ontology using clusterProfiler
-ego3 <-   gseGO(geneList     = geneList,
+```{r}
+## GSEA Gene Ontology using clusterProfiler, all genes
+ego3 <-   gseGO(geneList     = geneList.all,
                 ont          = "MF",
                 OrgDb        = org_db,
                 nPerm        = nperm,
@@ -103,6 +116,9 @@ ego3 <-   gseGO(geneList     = geneList,
                 pvalueCutoff = 0.1,
                 verbose      = FALSE)
 ego3.summary <- as.data.frame(ego3)
+```
+
+```{r fig.height=3}
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
   ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
@@ -120,11 +136,71 @@ if (nrow(ego3.summary) > 0) {
 }
 ```
 
+# Gene Ontology: Molecular Function, upregulated genes
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler, up- and downregulated genes separately
+ego3.up <-   gseGO(geneList  = geneList.up,
+                ont          = "MF",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+ego3.dn <-   gseGO(geneList  = geneList.dn,
+                ont          = "MF",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+
+ego3.up.summary <- as.data.frame(ego3.up)
+ego3.dn.summary <- as.data.frame(ego3.dn)
+```
+
+```{r fig.height=3}
+# Proceed to plotting, if up enrichments are available
+if (nrow(ego3.up.summary) > 0) {
+  ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$NES, decreasing = TRUE), ]
+  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+                             NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+# Gene Ontology: Molecular Function, downregulated genes
+
+```{r fig.height=3}
+# Proceed to plotting, if dn enrichments are available
+if (nrow(ego3.dn.summary) > 0) {
+  ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$NES, decreasing = TRUE), ]
+  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+
 # Gene Ontology: Biological processes
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
-ego3 <-   gseGO(geneList     = geneList,
+ego3 <-   gseGO(geneList     = geneList.all,
                 ont          = "BP",
                 OrgDb        = org_db,
                 nPerm        = nperm,
@@ -149,12 +225,72 @@ if (nrow(ego3.summary) > 0) {
 }
 ```
 
+# Gene Ontology: Biological processes, upregulated genes
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler, up- and downregulated genes separately
+ego3.up <-   gseGO(geneList  = geneList.up,
+                ont          = "BP",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+ego3.dn <-   gseGO(geneList  = geneList.dn,
+                ont          = "BP",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+
+ego3.up.summary <- as.data.frame(ego3.up)
+ego3.dn.summary <- as.data.frame(ego3.dn)
+```
+
+```{r fig.height=3}
+# Proceed to plotting, if up enrichments are available
+if (nrow(ego3.up.summary) > 0) {
+  ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$NES, decreasing = TRUE), ]
+  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+                             NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+# Gene Ontology: Biological processes, downregulated genes
+
+```{r fig.height=3}
+# Proceed to plotting, if dn enrichments are available
+if (nrow(ego3.dn.summary) > 0) {
+  ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$NES, decreasing = TRUE), ]
+  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+
 # Gene Ontology: Cellular Component
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
-ego3 <-   gseGO(geneList     = geneList,
-                ont          = "MF",
+ego3 <-   gseGO(geneList.all     = geneList.all,
+                ont          = "CC",
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
@@ -178,11 +314,71 @@ if (nrow(ego3.summary) > 0) {
 }
 ```
 
+# Gene Ontology: Cellular Component, upregulated genes
+
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler, up- and downregulated genes separately
+ego3.up <-   gseGO(geneList  = geneList.up,
+                ont          = "CC",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+ego3.dn <-   gseGO(geneList  = geneList.dn,
+                ont          = "CC",
+                OrgDb        = org_db,
+                nPerm        = nperm,
+                minGSSize    = 10,
+                pvalueCutoff = 0.1,
+                verbose      = FALSE)
+
+ego3.up.summary <- as.data.frame(ego3.up)
+ego3.dn.summary <- as.data.frame(ego3.dn)
+```
+
+```{r fig.height=3}
+# Proceed to plotting, if up enrichments are available
+if (nrow(ego3.up.summary) > 0) {
+  ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$NES, decreasing = TRUE), ]
+  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+                             NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+# Gene Ontology: Cellular Component, downregulated genes
+
+```{r fig.height=3}
+# Proceed to plotting, if dn enrichments are available
+if (nrow(ego3.dn.summary) > 0) {
+  ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$NES, decreasing = TRUE), ]
+  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+
 # KEGG canonical pathways
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
-ego3 <-   gseKEGG(geneList     = geneList,
+ego3 <-   gseKEGG(geneList     = geneList.all,
                   organism     = org_kegg,
                   keyType      = "kegg",
                   nPerm        = nperm,
@@ -207,7 +403,64 @@ if (nrow(ego3.summary) > 0) {
 }
 ```
 
+# KEGG canonical pathways, upregulated genes
 
+```{r fig.height=3}
+## GSEA Gene Ontology using clusterProfiler, up- and downregulated genes separately
+ego3.up <-gseKEGG(geneList     = geneList.up,
+                  organism     = org_kegg,
+                  keyType      = "kegg",
+                  nPerm        = nperm,
+                  minGSSize    = 10,
+                  pvalueCutoff = 0.1,
+                  verbose      = FALSE)
+ego3.dn <-gseKEGG(geneList     = geneList.dn,
+                  organism     = org_kegg,
+                  keyType      = "kegg",
+                  nPerm        = nperm,
+                  minGSSize    = 10,
+                  pvalueCutoff = 0.1,
+                  verbose      = FALSE)
+
+ego3.up.summary <- as.data.frame(ego3.up)
+ego3.dn.summary <- as.data.frame(ego3.dn)
+```
+
+```{r fig.height=3}
+# Proceed to plotting, if up enrichments are available
+if (nrow(ego3.up.summary) > 0) {
+  ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$NES, decreasing = TRUE), ]
+  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+                             NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
+
+# KEGG canonical pathways, downregulated genes
+
+```{r fig.height=3}
+# Proceed to plotting, if dn enrichments are available
+if (nrow(ego3.dn.summary) > 0) {
+  ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$NES, decreasing = TRUE), ]
+  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # Plot the results
+  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip() +
+    scale_fill_gradient(low="blue", high="red") +
+    labs(y = "Normalized Enrichment Score")
+}
+```
 
 
 ```{r eval=FALSE}
