@@ -195,8 +195,9 @@ if (nrow(ego3.dn.summary) > 0) {
 }
 ```
 
+\pagebreak
 
-# Gene Ontology: Biological processes
+# Gene Ontology: Biological processes, all genes
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
@@ -284,8 +285,9 @@ if (nrow(ego3.dn.summary) > 0) {
 }
 ```
 
+\pagebreak
 
-# Gene Ontology: Cellular Component
+# Gene Ontology: Cellular Component, all genes
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
@@ -373,8 +375,9 @@ if (nrow(ego3.dn.summary) > 0) {
 }
 ```
 
+\pagebreak
 
-# KEGG canonical pathways
+# KEGG canonical pathways, all genes
 
 ```{r fig.height=3}
 ## GSEA Gene Ontology using clusterProfiler
