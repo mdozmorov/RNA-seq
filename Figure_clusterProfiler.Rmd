@@ -92,6 +92,7 @@ if (logFC) { # Select genes by maximum logFC
   geneList.all <- geneList.all[order(geneList.all, decreasing = TRUE)] # Sort
   # Prepare separate up- and downregulated gene lists
   geneList.up        <- -log10(degs.all$PValue[degs.all$logFC > 0])
+  geneList.all[geneList.all == 0] <- .Machine$double.xmin # Avoid zero p-values
   names(geneList.up) <- degs.all$ENTREZID[degs.all$logFC > 0]
   geneList.up        <- geneList.up[order(geneList.up, decreasing = TRUE)]
   geneList.dn        <- -log10(degs.all$PValue[degs.all$logFC < 0])
