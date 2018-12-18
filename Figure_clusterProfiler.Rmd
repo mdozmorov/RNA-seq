@@ -88,14 +88,16 @@ if (logFC) { # Select genes by maximum logFC
   degs.all <- degs.all[ complete.cases(degs.all), ] # Keep only successfully converted entries
   # Prepare full gene list
   geneList.all <- -log10(degs.all$PValue)  # Use -log10-transformed 
-  geneList.all[is.infinite(geneList.all)] <- .Machine$double.xmax # Avoid infinite -log10 p-values
+  geneList.all[is.infinite(geneList.all)] <- -log10(.Machine$double.xmin) # Avoid infinite -log10 p-values
   names(geneList.all) <- degs.all$ENTREZID # Make it named
   geneList.all <- geneList.all[order(geneList.all, decreasing = TRUE)] # Sort
   # Prepare separate up- and downregulated gene lists
   geneList.up        <- -log10(degs.all$PValue[degs.all$logFC > 0])
+  geneList.up[is.infinite(geneList.up)] <- -log10(.Machine$double.xmin) # Avoid infinite -log10 p-values
   names(geneList.up) <- degs.all$ENTREZID[degs.all$logFC > 0]
   geneList.up        <- geneList.up[order(geneList.up, decreasing = TRUE)]
   geneList.dn        <- -log10(degs.all$PValue[degs.all$logFC < 0])
+  geneList.dn[is.infinite(geneList.dn)] <- -log10(.Machine$double.xmin) # Avoid infinite -log10 p-values
   names(geneList.dn) <- degs.all$ENTREZID[degs.all$logFC < 0]
   geneList.dn        <- geneList.dn[order(geneList.dn, decreasing = TRUE)]
 }
@@ -122,18 +124,18 @@ ego3.summary <- as.data.frame(ego3)
 ```{r fig.height=3}
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3.summary <- ego3.summary[order(ego3.summary$NES, decreasing = TRUE), ]
   ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
-                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+                             NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
-    geom_bar(stat = "Identity", width = 0.8) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
-    labs(y = "-log10(enrichment p-value)")
+    labs(y = "Normalized Enrichment Score")
 }
 ```
 
