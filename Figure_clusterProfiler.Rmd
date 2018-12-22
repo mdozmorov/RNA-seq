@@ -29,6 +29,8 @@ library(MDmisc)
 library(ggplot2)
 library(RColorBrewer)
 library(cowplot)
+library(DOSE)
+library(enrichplot)
 ```
 
 # Settings
@@ -465,6 +467,34 @@ if (nrow(ego3.dn.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+}
+```
+
+# DisGeNET, all genes (http://www.disgenet.org/)
+
+DisGeNet enrichment analysis identifies disease signatures enriched in the provided list of differentially expressed genes. Standard enrichment analysis and GSEA are run, shown on the two dot plots.
+
+```{r}
+edo  <- enrichDGN(names(geneList.all))
+edo2 <- gseNCG(geneList.all, nPerm = nperm)
+
+if(nrow(edo) > 0) {
+  p1 <- dotplot(edo, showCategory=30) + ggtitle("dotplot for Enrichment Analysis")
+  if(nrow(edo2) > 0) {
+    p2 <- dotplot(edo2, showCategory=30) + ggtitle("dotplot for GSEA")
+    plot_grid(p1, p2, ncol=2)
+  }
+  plot_grid(p1, ncol=1)
+}
+# barplot(edo, showCategory=20)
+```
+
+The `cnetplot` shows the linkage between genes and DisGeNet concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(edo) > 0) {
+  edox <- setReadable(x = edo, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all)
 }
 ```
 
