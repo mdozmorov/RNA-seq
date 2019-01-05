@@ -40,6 +40,7 @@ library(enrichplot)
 fileName <- "results/DEGs_C231_CRISPR1_vs_231_noCRISPR_hg38.xlsx"
 logFC    <- TRUE      # Are we using column 3: "logFC" or 6: "PValue"?
 # Analysis settings
+analysis_name  = "Analysis1" # Analysis name, to prefix file names for figures
 max_kegg_genes = 2000 # Maximum number of genes to run enrichment analysis on
 max_GO_to_plot = 12   # Maximum number of GOs to plot
 nperm = 10000         # Number of permutations
@@ -138,6 +139,28 @@ if (nrow(ego3.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -178,6 +201,28 @@ if (nrow(ego3.up.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOMF_up.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -197,10 +242,30 @@ if (nrow(ego3.dn.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOMF_dn.png"), width = 12, height = 3, units = "in")
 }
 ```
 
-\pagebreak
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
+}
+```
 
 # Gene Ontology: Biological processes, all genes
 
@@ -216,18 +281,40 @@ ego3 <-   gseGO(geneList     = geneList.all,
 ego3.summary <- as.data.frame(ego3)
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3.summary <- ego3.summary[order(ego3.summary$NES, decreasing = TRUE), ]
   ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
-                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+                             NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
-    geom_bar(stat = "Identity", width = 0.8) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
-    labs(y = "-log10(enrichment p-value)")
+    labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOBP_all.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -268,6 +355,28 @@ if (nrow(ego3.up.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOBP_up.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -287,10 +396,32 @@ if (nrow(ego3.dn.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOBP_dn.png"), width = 12, height = 3, units = "in")
 }
 ```
 
-\pagebreak
+
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
+}
+```
 
 # Gene Ontology: Cellular Component, all genes
 
@@ -306,18 +437,40 @@ ego3 <-   gseGO(geneList     = geneList.all,
 ego3.summary <- as.data.frame(ego3)
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3.summary <- ego3.summary[order(ego3.summary$NES, decreasing = TRUE), ]
   ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
-                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+                             NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
-    geom_bar(stat = "Identity", width = 0.8) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
-    labs(y = "-log10(enrichment p-value)")
+    labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOCC_all.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -358,6 +511,28 @@ if (nrow(ego3.up.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOCC_up.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -377,10 +552,30 @@ if (nrow(ego3.dn.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_GOCC_dn.png"), width = 12, height = 3, units = "in")
 }
 ```
 
-\pagebreak
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
+}
+```
 
 # KEGG canonical pathways, all genes
 
@@ -396,18 +591,40 @@ ego3 <-   gseKEGG(geneList     = geneList.all,
 ego3.summary <- as.data.frame(ego3)
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = TRUE), ]
+  ego3.summary <- ego3.summary[order(ego3.summary$NES, decreasing = TRUE), ]
   ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
-                             pvalue = -log10(ego3.summary$p.adjust)[1:min(nrow(ego3.summary), max_GO_to_plot)]) # -log10 of enrichment p-value
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$pvalue, decreasing = FALSE), ]  # Sort by -log10 of enrichment p-value
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$pvalue, decreasing = FALSE)]) # Adjust factor order
+                             NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
+  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3_to_plot, aes(x = GO, y = pvalue, fill = pvalue)) +
-    geom_bar(stat = "Identity", width = 0.8) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
-    labs(y = "-log10(enrichment p-value)")
+    labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_KEGG_all.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -448,6 +665,28 @@ if (nrow(ego3.up.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_KEGG_up.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -467,6 +706,28 @@ if (nrow(ego3.dn.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
+  ggsave(filename = paste0(analysis_name, "_KEGG_dn.png"), width = 12, height = 3, units = "in")
+}
+```
+
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(ego3) > 0) {
+  emapplot(ego3, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
+The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
+
+```{r}
+if(nrow(ego3) > 0) {
+  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+  cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -489,6 +750,18 @@ if(nrow(edo) > 0) {
 # barplot(edo, showCategory=20)
 ```
 
+## Enrichment Map
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
+
+```{r}
+if(nrow(edo) > 0) {
+  emapplot(edo, showCategory = max_GO_to_plot)
+}
+```
+
+## Gene-Concept Network
+
 The `cnetplot` shows the linkage between genes and DisGeNet concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
@@ -496,20 +769,4 @@ if(nrow(edo) > 0) {
   edox <- setReadable(x = edo, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all)
 }
-```
-
-
-```{r eval=FALSE}
-# Standard enrichment analysis
-mtx <- read.xlsx(fileName, sheet = 1)
-ego <- enrichGO(gene          = mtx$Geneid[1:max_kegg_genes],
-                OrgDb         = org_db,
-                keyType       = 'ENSEMBL',
-                ont           = "BP",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05)
-ego_summary <- summary(ego)
-barplot(ego, showCategory = max_GO_to_plot, x = "Count", colorBy = "pvalue")#, order = TRUE)
-dotplot(ego)
 ```
