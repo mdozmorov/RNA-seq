@@ -40,6 +40,7 @@ library(enrichplot)
 fileName <- "results/DEGs_C231_CRISPR1_vs_231_noCRISPR_hg38.xlsx"
 logFC    <- TRUE      # Are we using column 3: "logFC" or 6: "PValue"?
 # Analysis settings
+p_adj_cutoff   <- 0.2 # FDR cutoff
 analysis_name  = "Analysis1" # Analysis name, to prefix file names for figures
 max_kegg_genes = 2000 # Maximum number of genes to run enrichment analysis on
 max_GO_to_plot = 12   # Maximum number of GOs to plot
@@ -80,7 +81,8 @@ if (logFC) { # Select genes by maximum logFC
   geneList.up  <- geneList.all[geneList.all > 0]
   geneList.up  <- geneList.up[order(geneList.up, decreasing = TRUE)]
   geneList.dn  <- geneList.all[geneList.all < 0]
-  geneList.dn  <- geneList.dn[order(geneList.dn, decreasing = TRUE)]
+  geneList.dn  <- abs(geneList.dn) # Make absolute values for sorting
+  geneList.dn  <- geneList.dn[order(geneList.dn, decreasing = FALSE)]
 } else { # Select genes by smallest p-value
   degs.all <- degs.all[order(degs.all$PValue, decreasing = FALSE), ] # Sort by smallest p-value
   degs.all <- degs.all[1:min(nrow(degs.all), max_kegg_genes), ]      # Select maximum number of genes, or less
@@ -108,7 +110,9 @@ if (logFC) { # Select genes by maximum logFC
 
 Brief Methods: Gene Set Enrichment Analysis (GSEA [PMID: 16199517]) was performed on differentially expressed genes ranked by `r ifelse(logFC, "log-Fold Change", "p-value")` using `clusterProfiler` `r Biobase::package.version("clusterProfiler")`. `r nperm` permutations were performed to estimate permutation-based enrichment p-value. 
 
-Gene Ontology has three domains - "Molecular Function", "Biological Process", and "Cellular Component". Enrichment analyses is done separately for each.
+Gene Ontology has three domains - "Molecular Function", "Biological Process", and "Cellular Component". Enrichment analyses is done separately for each. Additionally, up- and downregulated genes are analyzed separately.
+
+Top `r max_GO_to_plot` most significantly enriched gene ontologies are shown in order of most-to-least significant. The height of the bars, "Normalized enrichment score", or NES, represent the effect size of the enrichment. Larger NES (higher bar) is not necesserily more significant.
 
 # Gene Ontology: Molecular Function, all genes
 
@@ -119,7 +123,7 @@ ego3 <-   gseGO(geneList     = geneList.all,
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 ego3.summary <- as.data.frame(ego3)
 ```
@@ -127,11 +131,12 @@ ego3.summary <- as.data.frame(ego3)
 ```{r fig.height=3}
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
-  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+  # ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", 
+                                         ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
                              NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
   ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
@@ -139,7 +144,7 @@ if (nrow(ego3.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -173,14 +178,14 @@ ego3.up <-   gseGO(geneList  = geneList.up,
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 ego3.dn <-   gseGO(geneList  = geneList.dn,
                 ont          = "MF",
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 
 ego3.up.summary <- as.data.frame(ego3.up)
@@ -188,21 +193,22 @@ ego3.dn.summary <- as.data.frame(ego3.dn)
 ```
 
 ```{r fig.height=3}
-# Proceed to plotting, if up enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.up.summary) > 0) {
   # ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$pvalue, decreasing = FALSE), ]
-  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+  ego3_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", 
+                                         ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
                              NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.up_to_plot <- within(ego3.up_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.up_to_plot), decreasing = TRUE)])) # Order as-is
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOMF_up.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -211,8 +217,8 @@ if (nrow(ego3.up.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.up) > 0) {
+  emapplot(ego3.up, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -221,8 +227,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.up) > 0) {
+  edox <- setReadable(x = ego3.up, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
@@ -230,31 +236,33 @@ if(nrow(ego3) > 0) {
 # Gene Ontology: Molecular Function, downregulated genes
 
 ```{r fig.height=3}
-# Proceed to plotting, if dn enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.dn.summary) > 0) {
   # ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$pvalue, decreasing = FALSE), ]
-  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
-                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.dn_to_plot <- within(ego3.dn_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.dn_to_plot), decreasing = TRUE)])) # Order as-is
+  ego3_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", 
+                                         ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
-    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOMF_dn.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
+
 
 ## Enrichment Map
 
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.dn) > 0) {
+  emapplot(ego3.dn, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -263,8 +271,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.dn) > 0) {
+  edox <- setReadable(x = ego3.dn, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
@@ -278,16 +286,20 @@ ego3 <-   gseGO(geneList     = geneList.all,
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 ego3.summary <- as.data.frame(ego3)
+```
+
+```{r fig.height=3}
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
-  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+  # ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", 
+                                         ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
                              NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
   ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
@@ -295,7 +307,7 @@ if (nrow(ego3.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOBP_all.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -329,14 +341,14 @@ ego3.up <-   gseGO(geneList  = geneList.up,
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 ego3.dn <-   gseGO(geneList  = geneList.dn,
                 ont          = "BP",
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 
 ego3.up.summary <- as.data.frame(ego3.up)
@@ -344,21 +356,22 @@ ego3.dn.summary <- as.data.frame(ego3.dn)
 ```
 
 ```{r fig.height=3}
-# Proceed to plotting, if up enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.up.summary) > 0) {
   # ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$pvalue, decreasing = FALSE), ]
-  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+  ego3_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", 
+                                         ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
                              NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.up_to_plot <- within(ego3.up_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.up_to_plot), decreasing = TRUE)])) # Order as-is
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOBP_up.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -367,8 +380,8 @@ if (nrow(ego3.up.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.up) > 0) {
+  emapplot(ego3.up, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -377,8 +390,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.up) > 0) {
+  edox <- setReadable(x = ego3.up, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
@@ -386,24 +399,24 @@ if(nrow(ego3) > 0) {
 # Gene Ontology: Biological processes, downregulated genes
 
 ```{r fig.height=3}
-# Proceed to plotting, if dn enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.dn.summary) > 0) {
   # ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$pvalue, decreasing = FALSE), ]
-  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
-                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO) # Adjust factor order
-  ego3.dn_to_plot <- within(ego3.dn_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.dn_to_plot), decreasing = TRUE)])) # Order as-is
+  ego3_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", 
+                                         ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
-    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOBP_dn.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
-
 
 
 ## Enrichment Map
@@ -411,8 +424,8 @@ if (nrow(ego3.dn.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.dn) > 0) {
+  emapplot(ego3.dn, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -421,11 +434,12 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.dn) > 0) {
+  edox <- setReadable(x = ego3.dn, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
+
 
 # Gene Ontology: Cellular Component, all genes
 
@@ -436,16 +450,20 @@ ego3 <-   gseGO(geneList     = geneList.all,
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 ego3.summary <- as.data.frame(ego3)
+```
+
+```{r fig.height=3}
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
-  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+  # ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", 
+                                         ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
                              NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
   ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
@@ -453,7 +471,7 @@ if (nrow(ego3.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOCC_all.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -487,14 +505,14 @@ ego3.up <-   gseGO(geneList  = geneList.up,
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 ego3.dn <-   gseGO(geneList  = geneList.dn,
                 ont          = "CC",
                 OrgDb        = org_db,
                 nPerm        = nperm,
                 minGSSize    = 10,
-                pvalueCutoff = 0.1,
+                pvalueCutoff = p_adj_cutoff,
                 verbose      = FALSE)
 
 ego3.up.summary <- as.data.frame(ego3.up)
@@ -502,21 +520,22 @@ ego3.dn.summary <- as.data.frame(ego3.dn)
 ```
 
 ```{r fig.height=3}
-# Proceed to plotting, if up enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.up.summary) > 0) {
   # ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$pvalue, decreasing = FALSE), ]
-  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+  ego3_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", 
+                                         ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
                              NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.up_to_plot <- within(ego3.up_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.up_to_plot), decreasing = TRUE)])) # Order as-is
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOCC_up.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -525,8 +544,8 @@ if (nrow(ego3.up.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.up) > 0) {
+  emapplot(ego3.up, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -535,8 +554,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.up) > 0) {
+  edox <- setReadable(x = ego3.up, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
@@ -544,21 +563,22 @@ if(nrow(ego3) > 0) {
 # Gene Ontology: Cellular Component, downregulated genes
 
 ```{r fig.height=3}
-# Proceed to plotting, if dn enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.dn.summary) > 0) {
   # ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$pvalue, decreasing = FALSE), ]
-  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
-                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.dn_to_plot <- within(ego3.dn_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.dn_to_plot), decreasing = TRUE)])) # Order as-is
+  ego3_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", 
+                                         ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
-    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_GOCC_dn.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -567,8 +587,8 @@ if (nrow(ego3.dn.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.dn) > 0) {
+  emapplot(ego3.dn, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -577,8 +597,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.dn) > 0) {
+  edox <- setReadable(x = ego3.dn, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
@@ -592,16 +612,20 @@ ego3 <-   gseKEGG(geneList     = geneList.all,
                   keyType      = "kegg",
                   nPerm        = nperm,
                   minGSSize    = 10,
-                  pvalueCutoff = 0.1,
+                  pvalueCutoff = p_adj_cutoff,
                   verbose      = FALSE)
 ego3.summary <- as.data.frame(ego3)
+```
+
+```{r fig.height=3}
 # Proceed to plotting, if enrichments are available
 if (nrow(ego3.summary) > 0) {
-  ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
-  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
+  # ego3.summary <- ego3.summary[order(ego3.summary$pvalue, decreasing = FALSE), ]
+  ego3_to_plot <- data.frame(GO = paste0(ego3.summary$ID[1:min(nrow(ego3.summary), max_GO_to_plot)], " ", 
+                                         ego3.summary$Description[1:min(nrow(ego3.summary), max_GO_to_plot)]),
                              NES = ego3.summary$NES[1:min(nrow(ego3.summary), max_GO_to_plot)]) # Normalized enrichment score
-  ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
-  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = ego3_to_plot$GO[order(ego3_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
   ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
@@ -609,7 +633,7 @@ if (nrow(ego3.summary) > 0) {
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_KEGG_all.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -643,14 +667,14 @@ ego3.up <-gseKEGG(geneList     = geneList.up,
                   keyType      = "kegg",
                   nPerm        = nperm,
                   minGSSize    = 10,
-                  pvalueCutoff = 0.1,
+                  pvalueCutoff = p_adj_cutoff,
                   verbose      = FALSE)
 ego3.dn <-gseKEGG(geneList     = geneList.dn,
                   organism     = org_kegg,
                   keyType      = "kegg",
                   nPerm        = nperm,
                   minGSSize    = 10,
-                  pvalueCutoff = 0.1,
+                  pvalueCutoff = p_adj_cutoff,
                   verbose      = FALSE)
 
 ego3.up.summary <- as.data.frame(ego3.up)
@@ -658,21 +682,22 @@ ego3.dn.summary <- as.data.frame(ego3.dn)
 ```
 
 ```{r fig.height=3}
-# Proceed to plotting, if up enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.up.summary) > 0) {
   # ego3.up.summary <- ego3.up.summary[order(ego3.up.summary$pvalue, decreasing = FALSE), ]
-  ego3.up_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
+  ego3_to_plot <- data.frame(GO = paste0(ego3.up.summary$ID[1:min(nrow(ego3.up.summary), max_GO_to_plot)], " ", 
+                                         ego3.up.summary$Description[1:min(nrow(ego3.up.summary), max_GO_to_plot)]),
                              NES = ego3.up.summary$NES[1:min(nrow(ego3.up.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.up_to_plot$GO <- factor(ego3.up_to_plot$GO, levels = ego3.up_to_plot$GO[order(ego3.up_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.up_to_plot <- within(ego3.up_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.up_to_plot), decreasing = TRUE)])) # Order as-is
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.up_to_plot, aes(x = GO, y = NES)) +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
     geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_KEGG_up.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -681,8 +706,8 @@ if (nrow(ego3.up.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.up) > 0) {
+  emapplot(ego3.up, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -691,8 +716,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.up) > 0) {
+  edox <- setReadable(x = ego3.up, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
@@ -700,21 +725,22 @@ if(nrow(ego3) > 0) {
 # KEGG canonical pathways, downregulated genes
 
 ```{r fig.height=3}
-# Proceed to plotting, if dn enrichments are available
+# Proceed to plotting, if enrichments are available
 if (nrow(ego3.dn.summary) > 0) {
   # ego3.dn.summary <- ego3.dn.summary[order(ego3.dn.summary$pvalue, decreasing = FALSE), ]
-  ego3.dn_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
-                             NES = -ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
-  # ego3.dn_to_plot$GO <- factor(ego3.dn_to_plot$GO, levels = ego3.dn_to_plot$GO[order(ego3.dn_to_plot$NES, decreasing = FALSE)]) # Adjust factor order
-  ego3.dn_to_plot <- within(ego3.dn_to_plot, GO <- factor(GO, levels = GO[order(1:nrow(ego3.dn_to_plot), decreasing = TRUE)])) # Order as-is
+  ego3_to_plot <- data.frame(GO = paste0(ego3.dn.summary$ID[1:min(nrow(ego3.dn.summary), max_GO_to_plot)], " ", 
+                                         ego3.dn.summary$Description[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]),
+                             NES = ego3.dn.summary$NES[1:min(nrow(ego3.dn.summary), max_GO_to_plot)]) # Normalized enrichment score
+  # ego3_to_plot    <- ego3_to_plot[order(ego3_to_plot$NES, decreasing = FALSE), ]  # Sort by NES
+  ego3_to_plot$GO <- factor(ego3_to_plot$GO, levels = rev(ego3_to_plot$GO)) # Adjust factor order
   # Plot the results
-  ggplot(data = ego3.dn_to_plot, aes(x = GO, y = NES)) +
-    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "blue") +
+  ggplot(data = ego3_to_plot, aes(x = GO, y = NES)) +
+    geom_bar(stat = "Identity", width = 0.8, color = "black", fill = "red") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     coord_flip() +
     scale_fill_gradient(low="blue", high="red") +
     labs(y = "Normalized Enrichment Score")
-  ggsave(filename = paste0(analysis_name, "_KEGG_dn.png"), width = 12, height = 3, units = "in")
+  # ggsave(filename = paste0(analysis_name, "_GOMF_all.png"), width = 12, height = 3, units = "in")
 }
 ```
 
@@ -723,8 +749,8 @@ if (nrow(ego3.dn.summary) > 0) {
 Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional module.
 
 ```{r}
-if(nrow(ego3) > 0) {
-  emapplot(ego3, showCategory = max_GO_to_plot)
+if(nrow(ego3.dn) > 0) {
+  emapplot(ego3.dn, showCategory = max_GO_to_plot)
 }
 ```
 
@@ -733,8 +759,8 @@ if(nrow(ego3) > 0) {
 The `cnetplot` shows the linkage between genes and concepts. Red/green gradient indicates up/downregulated genes, respectively. 
 
 ```{r}
-if(nrow(ego3) > 0) {
-  edox <- setReadable(x = ego3, OrgDb = org_db, keytype = 'ENTREZID')
+if(nrow(ego3.dn) > 0) {
+  edox <- setReadable(x = ego3.dn, OrgDb = org_db, keytype = 'ENTREZID')
   cnetplot(edox, foldChange = geneList.all, showCategory = max_GO_to_plot)
 }
 ```
