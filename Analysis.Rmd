@@ -116,8 +116,8 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
     dev.off()
   } else {
     # NMF::aheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), hclust = clustmethod, scale = "row", annCol = sample_annotation_subset$Group[subset_index], annColors = list(c("red", "blue")), labRow = genes.to.plot$symbol, fontsize = 10, cexRow = 10) # color="-RdYlBu"
-    pheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol)
-
+    # pheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol)
+    pheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'white', 'red'))(20), clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol, scale = "row")
   }
 }
 ```
