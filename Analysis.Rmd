@@ -38,8 +38,7 @@ library(org.Mm.eg.db)
 library(shiny)
 library(ggplot2)
 library(pheatmap)
-# devtools::install_github("mdozmorov/enrichR")
-library(enrichR)
+source("https://raw.githubusercontent.com/mdozmorov/enrichR/master/R/api_wrapper.R")
 library(annotables) # Annotations of Ensembl IDs
 
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
