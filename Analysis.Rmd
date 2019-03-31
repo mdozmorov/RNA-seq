@@ -70,13 +70,15 @@ all.symbol <- unique(gene_annotations$symbol)
 p.vals <- function(object, p_adj_cutoff = 0.1, subset_by = subset_by, comparison = "DEGs", nplot = 50, print_to_file = TRUE) {
 
   genes.ABC <- topTags(object, n = Inf, p.value = p_adj_cutoff) %>% as.data.frame # Get all significant genes
-  
-  # genes.ABC$ensgene <- sapply(genes.ABC$genes, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
-  genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), gene_annotations, by = c("genes" = "ensgene")) # Attach annotations
-  
-  if (print_to_file) {
-    # Save most significant genes
-    save_res(genes.ABC, fileName_rna, wb = wb, sheetName = comparison) # Save gene list
+  # Proceed only if some results returned
+  if (nrow(genes.ABC) > 0) {
+    # genes.ABC$ensgene <- sapply(genes.ABC$genes, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
+    genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), gene_annotations, by = c("genes" = "ensgene")) # Attach annotations
+    
+    if (print_to_file) {
+      # Save most significant genes
+      save_res(genes.ABC, fileName_rna, wb = wb, sheetName = comparison) # Save gene list
+    }
   }
   # Return actual gene list
   return(genes.ABC)
