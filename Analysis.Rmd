@@ -34,7 +34,6 @@ library(reshape2)
 library(MDmisc)
 library(heatmaply)
 library(pheatmap)
-library(org.Mm.eg.db)
 library(shiny)
 library(ggplot2)
 library(pheatmap)
@@ -47,11 +46,15 @@ mouse_analysis <- FALSE
 
 # Prepate gene annotations, remove non-canonical chromosome names
 if (human_analysis) {
-  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "description")]
+  library(org.Hs.eg.db)
+  OrgDb = "org.Hs.eg.db"; species = "hsa"
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
   gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
 }
 if (mouse_analysis) {
-  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "description")]
+  library(org.Mm.eg.db)
+  OrgDb = "org.Mm.eg.db"; species = "mmu"
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
   gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
 }
 # All genes for background
@@ -211,6 +214,9 @@ nkegg          <- 35 # Number of genes to output in a KEGG table
 min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
 max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
+# Which pathway enrichment analysis to run
+run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
+useTPM    = FALSE # Whether or not to save expression counts to TPM
 ```
 
 ```{r}
@@ -227,6 +233,7 @@ up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulate
 
 sample_annotation <- read.csv(paste0(data_dir, "data/sample_annotation.csv"))
 sample_annotation$Sample <- make.names(sample_annotation$Sample)
+sample_annotation$Sample <- sub(".txt.gz", "", sample_annotation$Sample)
 sample_annotation <- sample_annotation[order(sample_annotation$Sample), ]
 # Explicitly make factors. Manually adjust for all columns in the sample annotation file
 sample_annotation$Group   <- factor(sample_annotation$Group)
@@ -331,16 +338,18 @@ all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
 
 ## Save TPM matrix
 
-```{r eval=FALSE}
-source("calcTPM.R")
-TPM <- calcTPM(data = counts[, 7:ncol(counts)], feature_length = counts[, c("Geneid", "Length")])
-TPM <- data.frame(ensgene = counts[, "Geneid"], TPM)
-# Add gene description
-TPM <- inner_join(TPM, gene_annotations, by = "ensgene")
-
-unlink(fileName_tpm) # Delete previous file
-wb <- openxlsx::createWorkbook(fileName_tpm) # openxlsx::loadWorkbook(fileName) # Or, load existing
-save_res(TPM, fileName = fileName_tpm, wb = wb, sheetName = "TPM")
+```{r}
+if (useTPM) {
+  source("calcTPM.R")
+  TPM <- calcTPM(data = counts[, 7:ncol(counts)], feature_length = counts[, c("Geneid", "Length")])
+  TPM <- data.frame(ensgene = counts[, "Geneid"], TPM)
+  # Add gene description
+  TPM <- inner_join(TPM, gene_annotations, by = "ensgene")
+  
+  unlink(fileName_tpm) # Delete previous file
+  wb <- openxlsx::createWorkbook(fileName_tpm) # openxlsx::loadWorkbook(fileName) # Or, load existing
+  save_res(TPM, fileName = fileName_tpm, wb = wb, sheetName = "TPM")
+}
 ```
 
 # Analysis
@@ -473,6 +482,13 @@ res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_
 
 Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated.
 
+```{r}
+res <- res[ res$biotype == "protein_coding", ]
+```
+
+Stats after selecting for protein-coding genes only.  
+Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated.
+
 ```{r fig.height=12}
 if (nrow(res) > 0) {
   res[, c("logFC", "logCPM", "LR")] <- round(res[, c("logFC", "logCPM", "LR")], 2)
@@ -500,24 +516,141 @@ if (nrow(res) > 0)
   genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = nplot, comparison = "Analysis_1", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
 ```
 
-### KEGG pathways for all differentially expressed genes
-
 ```{r}
-if (nrow(res) > min_kegg_genes) {
-    up.genes <- unique(res$symbol)[1:min(length(unique(res$symbol)), max_kegg_genes)]
-    res.kegg <- save_enrichr(up.genes = up.genes, databases = "KEGG_2016", fileName = fileName_rna, wb = wb, sheetName = "KEGG_1" )
-  if (nrow(res.kegg) > 0) {
-    kable(res.kegg[1:min(nkegg, nrow(res.kegg)), ])
+if( run_gsea == FALSE) {
+  # Subset the number of DEGs for KEGG analysis to the maximum
+  if (nrow(res) > max_kegg_genes) {
+    degs_subset <- res[1:max_kegg_genes, ]
+  } else {
+    degs_subset <- res
   }
-} else {
-  print("Insufficient data to run KEGG enrichment analysis")
+  # Get list of up- and downregulated genes
+  up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
+  dn.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC < 0 ]))
+  # Run KEGG
+  if (up_dn_separate) {
+    # Analyze up- and downregulated genes separately
+    print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
+    res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb)
+  } else {
+    # Analyze up- and downregulated genes together
+    print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
+    res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileNameRes, wb = wb)
+  }
 }
 ```
+
+## KEGG pathway GSEA analysis 
+
+**Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.
+
+```{r}
+if (run_gsea == TRUE) {
+  library(clusterProfiler)
+  library(DOSE)
+  ## GSEA using clusterProfiler
+  # All DEGs
+  res.all <- topTable(fit2, coef = 1, number = Inf)
+  # Convert symbols to entrezids
+  eid <- bitr(rownames(res.all), fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  # Attach converted entrezids
+  res.all <- left_join(data.frame(SYMBOL = rownames(res.all), res.all), eid, by = "SYMBOL")
+  res.all <- res.all[ res.all$ENTREZID != "", ]
+  # List of t-statistics
+  geneList <- res.all$t
+  # Make it named
+  names(geneList) <- res.all$ENTREZID
+  # And decreasing sorted
+  geneList <- sort(geneList, decreasing = TRUE)
+  # Actual GSEA
+  set.seed(1)
+  ego3 <- gseKEGG(geneList     = geneList,
+                  organism     = "hsa",
+                  nPerm        = 1000,
+                  minGSSize    = 10,
+                  pvalueCutoff = 0.1,
+                  verbose      = FALSE)
+  # Get summary
+  ego3 <- setReadable(ego3, OrgDb = org.Hs.eg.db, keytype = "ENTREZID")
+  res.kegg <- as.data.frame(ego3)
+  # Save the full results
+  save_res(res.kegg, fileName = fileNameRes, wb = wb, sheetName = "KEGG_GSEA")
+  # Prepare for table output
+  res.kegg <- res.kegg[, c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")]
+  res.kegg <- res.kegg[order(res.kegg$NES, decreasing = TRUE), ]
+  res.kegg <- res.kegg[res.kegg$p.adjust < p_adj_cutoff, ]
+  res.kegg$NES       <- round(res.kegg$NES, digits = 2)
+  res.kegg$pvalue    <- formatC(res.kegg$pvalue, format = "e", digits = 2)
+  res.kegg$p.adjust  <- formatC(res.kegg$p.adjust, format = "e", digits = 2)
+  rownames(res.kegg) <- NULL
+}
+```
+
+A total of `r nrow(res.kegg)` KEGG pathways were detected as significantly affected at FDR `r p_adj_cutoff`. Top `r ntable` shown.
+
+```{r}
+# Display the results
+# DT::datatable(res.kegg)
+if (nrow(res.kegg) > 0 ) {
+  kable(res.kegg[1:min(ntable, nrow(res.kegg)), ])
+}
+```
+
+## Selected pathway
+
+## Selected pathway
+
+Red/Green - up/downregulated genes in upper vs. lower `r selected_genes` expressing samples. Gray - marginal fold change, yet significant. White - gene is not differentially expressed
+
+```{r eval=FALSE}
+library(pathview)
+library(openxlsx)
+degs <- read.xlsx(fileName_rna)
+# Convert to EntrezID
+degs.eg <-clusterProfiler::bitr(degs$genes, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = OrgDb)
+degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
+degs <- degs[!is.na(degs$ENTREZID), ]
+degs <- aggregate(x = degs$logFC, by = list(degs$ENTREZID), FUN = mean )
+colnames(degs) <- c("ENTREZID", "logFC")
+# Construct vector of FCs
+degs.genes <- degs$logFC
+names(degs.genes) <- degs$symbol
+# Adjust as needed
+pv.out <- pathview(gene.data = degs.genes, pathway.id = "04510", species = species, gene.idtype = "SYMBOL", gene.annotpkg = OrgDb, out.suffix = "dn")
+```
+
+```{r echo=FALSE, out.height='300px', eval=TRUE}
+knitr::include_graphics('mmu04510.dn.png')
+```
+
+
+```{r eval=FALSE}
+library(pathview)
+library(openxlsx)
+degs <- read.xlsx(fileName_rna)
+# Convert to EntrezID
+degs.eg <-clusterProfiler::bitr(degs$genes, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = OrgDb)
+degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
+degs <- degs[!is.na(degs$ENTREZID), ]
+degs <- aggregate(x = degs$logFC, by = list(degs$ENTREZID), FUN = mean )
+colnames(degs) <- c("ENTREZID", "logFC")
+# Construct vector of FCs
+degs.genes <- degs$logFC
+names(degs.genes) <- degs$symbol
+# Adjust as needed
+pv.out <- pathview(gene.data = degs.genes, pathway.id = "04510", species = species, gene.idtype = "SYMBOL", gene.annotpkg = OrgDb, out.suffix = "dn")
+```
+
+```{r echo=FALSE, out.height='300px', eval=FALSE}
+knitr::include_graphics('mmu04510.dn.png')
+```
+
+
 
 ### Expression barplots of selected genes
 
 ```{r fig.height=3, fig.width=5}
-selected_genes <- c("ISG15", "OAS1", "MX1", "IFI6", "IFIT1", "IFITM1", "IFIT3")
+selected_genes <- c("Sphk1", "Sphk2")
 # Gen Ensembl IDs
 selected_gene_annotations <- gene_annotations[ gene_annotations$symbol %in% selected_genes, ]
 
@@ -527,19 +660,19 @@ selected_genes_expr[match(selected_gene_annotations$ensgene, rownames(selected_g
 # Replace row names by gene symbols
 rownames(selected_genes_expr) <- selected_gene_annotations$symbol
 # Reassign columns to groups
-colnames(selected_genes_expr) <- ifelse(sample_annotation_subset$Group == "C", "White", "Black, or AA") %>% as.character()
+colnames(selected_genes_expr) <- ifelse(sample_annotation_subset$Group == "WT", "WT", "KO") %>% as.character()
 
 # Reshape the data
 gdata <- reshape2::melt(selected_genes_expr)
-colnames(gdata) <- c("Gene", "Race", "value")
+colnames(gdata) <- c("Gene", "Group", "value")
 
 # ggplot(gdata, aes(x = gene, y = value, fill = group)) + geom_boxplot()
 # ggplot(gdata, aes(x = cancer, y = value, fill = variable)) + geom_bar(position=position_dodge(), stat = "summary", fun.y = "mean")
 
 # http://www.cookbook-r.com/Graphs/Plotting_means_and_error_bars_(ggplot2)/
-gdata_summary <- summarySE(gdata, measurevar="value", groupvars=c("Gene", "Race"))
+gdata_summary <- summarySE(gdata, measurevar="value", groupvars=c("Gene", "Group"))
 
-ggplot(gdata_summary, aes(x = Gene, y = value, fill = Race)) + 
+ggplot(gdata_summary, aes(x = Gene, y = value, fill = Group)) + 
     geom_bar(position=position_dodge(), stat="identity",
              colour="black", # Use black outlines,
              size=.3) +      # Thinner lines
