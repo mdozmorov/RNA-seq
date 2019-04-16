@@ -115,12 +115,10 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
   # Save to PDF
   if (print_to_file) {
     pdf(paste0("results/Figure_Heatmap_", comparison, "_", nplot, ".pdf"), width = width, height = height)
-    NMF::aheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), hclust = clustmethod, scale = "row", annCol = apply(data.frame(annotation_samples$Cell[ subset_index ], annotation_samples$Condition[ subset_index ]), 1, paste, collapse = "_"), annColors = list(c("red", "blue")), labRow = genes.to.plot$symbol, fontsize = 10, cexRow = 10) # color="-RdYlBu"
+    pheatmap(matrix.to.plot, color = col3, clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol, scale = "row")
     dev.off()
   } else {
-    # NMF::aheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), hclust = clustmethod, scale = "row", annCol = sample_annotation_subset$Group[subset_index], annColors = list(c("red", "blue")), labRow = genes.to.plot$symbol, fontsize = 10, cexRow = 10) # color="-RdYlBu"
-    # pheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'gray', 'yellow'))(20), clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol)
-    pheatmap(matrix.to.plot, color=colorRampPalette(c('blue', 'white', 'red'))(20), clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol, scale = "row")
+    pheatmap(matrix.to.plot, color = col3, clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol, scale = "row")
   }
 }
 ```
@@ -217,6 +215,11 @@ up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulate
 # Which pathway enrichment analysis to run
 run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
 useTPM    = FALSE # Whether or not to save expression counts to TPM
+# Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
+col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
+col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
+col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
+col3 <- colorRamps::green2red(n = 20)
 ```
 
 ```{r}
