@@ -77,6 +77,8 @@ p.vals <- function(object, p_adj_cutoff = 0.1, subset_by = subset_by, comparison
   if (nrow(genes.ABC) > 0) {
     # genes.ABC$ensgene <- sapply(genes.ABC$genes, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
     genes.ABC <- left_join(data.frame(genes.ABC, stringsAsFactors = FALSE), gene_annotations, by = c("genes" = "ensgene")) # Attach annotations
+    # Sort by LR
+    genes.ABC <- genes.ABC[order(genes.ABC$LR, decreasing = TRUE), ]
     
     if (print_to_file) {
       # Save most significant genes
