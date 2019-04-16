@@ -211,6 +211,7 @@ nplot          <- 50 # How many genes to plot on a heatmap
 nbox           <- 9  # How many genes to plot on a boxplot
 ntable         <- 15 # Number of genes to output in a DEG table
 nkegg          <- 35 # Number of genes to output in a KEGG table
+nperm          <- 10000 # Number of permutations (for GSEA)
 min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
 max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
@@ -555,14 +556,14 @@ if (run_gsea == TRUE) {
   library(DOSE)
   ## GSEA using clusterProfiler
   # All DEGs
-  res.all <- topTable(fit2, coef = 1, number = Inf)
+  res.all <- topTags(lrt, n = Inf)
   # Convert symbols to entrezids
-  eid <- bitr(rownames(res.all), fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  eid <- bitr(res.all$table$genes, fromType="ENSEMBL", toType="ENTREZID", OrgDb=OrgDb)
   # Attach converted entrezids
-  res.all <- left_join(data.frame(SYMBOL = rownames(res.all), res.all), eid, by = "SYMBOL")
-  res.all <- res.all[ res.all$ENTREZID != "", ]
+  res.all <- left_join(res.all$table, eid, by = c("genes" = "ENSEMBL"))
+  res.all <- res.all[ !is.na(res.all$ENTREZID), ]
   # List of t-statistics
-  geneList <- res.all$t
+  geneList <- res.all$LR
   # Make it named
   names(geneList) <- res.all$ENTREZID
   # And decreasing sorted
@@ -570,16 +571,16 @@ if (run_gsea == TRUE) {
   # Actual GSEA
   set.seed(1)
   ego3 <- gseKEGG(geneList     = geneList,
-                  organism     = "hsa",
-                  nPerm        = 1000,
+                  organism     = species,
+                  nPerm        = nperm,
                   minGSSize    = 10,
-                  pvalueCutoff = 0.1,
+                  pvalueCutoff = 1,
                   verbose      = FALSE)
   # Get summary
-  ego3 <- setReadable(ego3, OrgDb = org.Hs.eg.db, keytype = "ENTREZID")
+  ego3 <- setReadable(ego3, OrgDb = OrgDb, keytype = "ENTREZID")
   res.kegg <- as.data.frame(ego3)
   # Save the full results
-  save_res(res.kegg, fileName = fileNameRes, wb = wb, sheetName = "KEGG_GSEA")
+  save_res(res.kegg, fileName = fileName_rna, wb = wb, sheetName = "KEGG_GSEA")
   # Prepare for table output
   res.kegg <- res.kegg[, c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")]
   res.kegg <- res.kegg[order(res.kegg$NES, decreasing = TRUE), ]
