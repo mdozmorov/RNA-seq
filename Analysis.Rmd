@@ -114,6 +114,11 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
   annotation_col <- data.frame(Group = sample_annotation_subset$Group[subset_index])
   rownames(annotation_col) <- colnames(cpm(edgeR.dgelist)[, subset_index])
   
+  # If too many genes, do not plot gene names
+  if (nplot > 50) {
+    genes.to.plot$symbol <- ""
+  }
+  
   # Save to PDF
   if (print_to_file) {
     pdf(paste0("results/Figure_Heatmap_", comparison, "_", nplot, ".pdf"), width = width, height = height)
