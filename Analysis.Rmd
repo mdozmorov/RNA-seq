@@ -537,11 +537,11 @@ if( run_gsea == FALSE) {
   if (up_dn_separate) {
     # Analyze up- and downregulated genes separately
     print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
-    res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb)
+    res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
   } else {
     # Analyze up- and downregulated genes together
     print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
-    res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileNameRes, wb = wb)
+    res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileName_RNA, wb = wb, sheetName = "KEGG_1")
   }
 }
 ```
