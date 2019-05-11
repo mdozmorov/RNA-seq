@@ -213,6 +213,8 @@ all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
 
 ## Save TPM matrix
 
+Save the expression of all genes across all conditions as log2-transformed TPM values (read, gene expression) in the `r fileName_tpm` file. [More about TPM](https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/). Used to look up any gene and compare its expression across conditions. 
+
 ```{r}
 if (useTPM) {
   source("calcTPM.R")
