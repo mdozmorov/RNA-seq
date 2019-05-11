@@ -541,7 +541,7 @@ Red/Green - up/downregulated genes in upper vs. lower `r selected_genes` express
 ```{r eval=FALSE}
 library(pathview)
 library(openxlsx)
-degs <- read.xlsx(fileName_rna)
+degs <- read.xlsx(fileName_rna, sheet = 1)
 # Convert to EntrezID
 degs.eg <-clusterProfiler::bitr(degs$genes, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = OrgDb)
 degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
@@ -550,40 +550,16 @@ degs <- aggregate(x = degs$logFC, by = list(degs$ENTREZID), FUN = mean )
 colnames(degs) <- c("ENTREZID", "logFC")
 # Construct vector of FCs
 degs.genes <- degs$logFC
-names(degs.genes) <- degs$symbol
+names(degs.genes) <- degs$ENTREZID
 # Adjust as needed
-pv.out <- pathview(gene.data = degs.genes, pathway.id = "04510", species = species, gene.idtype = "SYMBOL", gene.annotpkg = OrgDb, out.suffix = "dn")
+pv.out <- pathview(gene.data = degs.genes, pathway.id = "04658", species = species, gene.idtype = "ENTREZ", gene.annotpkg = OrgDb, out.suffix = "Analysis_1")
 ```
 
-```{r echo=FALSE, out.height='300px', eval=FALSE}
-knitr::include_graphics('mmu04510.dn.png')
+```{r echo=FALSE, out.height='300px', eval=TRUE}
+knitr::include_graphics('mmu04658.Analysis_1.png')
 ```
 
-
-```{r eval=FALSE}
-library(pathview)
-library(openxlsx)
-degs <- read.xlsx(fileName_rna)
-# Convert to EntrezID
-degs.eg <-clusterProfiler::bitr(degs$genes, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = OrgDb)
-degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
-degs <- degs[!is.na(degs$ENTREZID), ]
-degs <- aggregate(x = degs$logFC, by = list(degs$ENTREZID), FUN = mean )
-colnames(degs) <- c("ENTREZID", "logFC")
-# Construct vector of FCs
-degs.genes <- degs$logFC
-names(degs.genes) <- degs$symbol
-# Adjust as needed
-pv.out <- pathview(gene.data = degs.genes, pathway.id = "04510", species = species, gene.idtype = "SYMBOL", gene.annotpkg = OrgDb, out.suffix = "dn")
-```
-
-```{r echo=FALSE, out.height='300px', eval=FALSE}
-knitr::include_graphics('mmu04510.dn.png')
-```
-
-
-
-### Expression barplots of selected genes
+## Expression barplots of selected genes
 
 ```{r fig.height=3, fig.width=5}
 selected_genes <- c("Sphk1", "Sphk2")
