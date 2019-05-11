@@ -40,26 +40,6 @@ library(pheatmap)
 source("https://raw.githubusercontent.com/mdozmorov/enrichR/master/R/api_wrapper.R")
 source("utils.R")   # Helper functions
 library(annotables) # Annotations of Ensembl IDs
-
-# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
-human_analysis <- TRUE
-mouse_analysis <- FALSE
-
-# Prepate gene annotations, remove non-canonical chromosome names
-if (human_analysis) {
-  library(org.Hs.eg.db)
-  OrgDb = "org.Hs.eg.db"; species = "hsa"
-  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
-  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
-}
-if (mouse_analysis) {
-  library(org.Mm.eg.db)
-  OrgDb = "org.Mm.eg.db"; species = "mmu"
-  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
-  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
-}
-# All genes for background
-all.symbol <- unique(gene_annotations$symbol) 
 ```
 
 # Settings
@@ -86,6 +66,28 @@ col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
 col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
 col3 <- colorRamps::green2red(n = 20)
+```
+
+```{r}
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
+
+# Prepate gene annotations, remove non-canonical chromosome names
+if (human_analysis) {
+  library(org.Hs.eg.db)
+  OrgDb = "org.Hs.eg.db"; species = "hsa"
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+}
+if (mouse_analysis) {
+  library(org.Mm.eg.db)
+  OrgDb = "org.Mm.eg.db"; species = "mmu"
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+}
+# All genes for background
+all.symbol <- unique(gene_annotations$symbol) 
 ```
 
 # Sample annotations
