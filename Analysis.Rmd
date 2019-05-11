@@ -61,6 +61,32 @@ if (mouse_analysis) {
 all.symbol <- unique(gene_annotations$symbol) 
 ```
 
+# Settings
+
+```{r}
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Devanand_2018/" # Working directory
+fileName_rna   <- paste0(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
+fileName_tpm   <- paste0(data_dir, "results/TPM.xlsx")  # File to save TPM values
+p_val_cutoff   <- 0.05 # Regular p-value cutoff
+p_adj_cutoff   <- 0.05 # FDR cutoff
+nplot          <- 50 # How many genes to plot on a heatmap
+nbox           <- 9  # How many genes to plot on a boxplot
+ntable         <- 15 # Number of genes to output in a DEG table
+nkegg          <- 35 # Number of genes to output in a KEGG table
+nperm          <- 10000 # Number of permutations (for GSEA)
+min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
+max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
+up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
+# Which pathway enrichment analysis to run
+run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
+useTPM    = FALSE # Whether or not to save expression counts to TPM
+# Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
+col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
+col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
+col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
+col3 <- colorRamps::green2red(n = 20)
+```
+
 # Helper functions
 
 ```{r p.vals}
@@ -198,32 +224,7 @@ summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
 }
 ```
 
-
-# Settings
-
-```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Devanand_2018/" # Working directory
-fileName_rna   <- paste0(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
-fileName_tpm   <- paste0(data_dir, "results/TPM.xlsx")  # File to save TPM values
-p_val_cutoff   <- 0.05 # Regular p-value cutoff
-p_adj_cutoff   <- 0.05 # FDR cutoff
-nplot          <- 50 # How many genes to plot on a heatmap
-nbox           <- 9  # How many genes to plot on a boxplot
-ntable         <- 15 # Number of genes to output in a DEG table
-nkegg          <- 35 # Number of genes to output in a KEGG table
-nperm          <- 10000 # Number of permutations (for GSEA)
-min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
-max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
-up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
-# Which pathway enrichment analysis to run
-run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
-useTPM    = FALSE # Whether or not to save expression counts to TPM
-# Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
-col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
-col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
-col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
-col3 <- colorRamps::green2red(n = 20)
-```
+# Sample annotations
 
 ```{r}
 # Adjust path to sample annotation file, comma-separated
