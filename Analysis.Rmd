@@ -79,12 +79,14 @@ if (human_analysis) {
   OrgDb = "org.Hs.eg.db"; species = "hsa"
   gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
   gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  KEGG <- "KEGG_2019_Human"
 }
 if (mouse_analysis) {
   library(org.Mm.eg.db)
   OrgDb = "org.Mm.eg.db"; species = "mmu"
   gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
   gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  KEGG <- "KEGG_2019_Mouse"
 }
 # All genes for background
 all.symbol <- unique(gene_annotations$symbol) 
@@ -467,11 +469,11 @@ if( run_gsea == FALSE) {
   if (up_dn_separate) {
     # Analyze up- and downregulated genes separately
     print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
-    res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+    res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
   } else {
     # Analyze up- and downregulated genes together
     print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
-    res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = "KEGG_2016", fdr.cutoff = p_adj_cutoff, fileName = fileName_RNA, wb = wb, sheetName = "KEGG_1")
+    res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
   }
 }
 ```
