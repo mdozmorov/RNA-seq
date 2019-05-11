@@ -60,7 +60,7 @@ max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
 # Which pathway enrichment analysis to run
 run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
-useTPM    = FALSE # Whether or not to save expression counts to TPM
+saveTPM  <- TRUE # Whether or not to save expression counts to TPM
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
 col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
@@ -216,9 +216,10 @@ all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
 Save the expression of all genes across all conditions as log2-transformed TPM values (read, gene expression) in the `r fileName_tpm` file. [More about TPM](https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/). Used to look up any gene and compare its expression across conditions. 
 
 ```{r}
-if (useTPM) {
+if (saveTPM) {
   source("calcTPM.R")
   TPM <- calcTPM(data = counts[, 7:ncol(counts)], feature_length = counts[, c("Geneid", "Length")])
+  TPM <- log2(TPM + 1) # log2 transform
   TPM <- data.frame(ensgene = counts[, "Geneid"], TPM)
   # Add gene description
   TPM <- inner_join(TPM, gene_annotations, by = "ensgene")
@@ -538,7 +539,7 @@ if (nrow(res.kegg) > 0 ) {
 
 ## Selected pathway
 
-Red/Green - up/downregulated genes in upper vs. lower `r selected_genes` expressing samples. Gray - marginal fold change, yet significant. White - gene is not differentially expressed
+Red/Green - up/downregulated genes, respectively. Gray - marginal fold change, yet significant. White - gene is not differentially expressed
 
 ```{r eval=FALSE}
 library(pathview)
@@ -570,7 +571,7 @@ selected_gene_annotations <- gene_annotations[ gene_annotations$symbol %in% sele
 
 selected_genes_expr <- mtx[rownames(mtx) %in% selected_gene_annotations$ensgene, ]
 # Match order
-selected_genes_expr[match(selected_gene_annotations$ensgene, rownames(selected_genes_expr)), ]
+selected_genes_expr <- selected_genes_expr[match(selected_gene_annotations$ensgene, rownames(selected_genes_expr)), ]
 # Replace row names by gene symbols
 rownames(selected_genes_expr) <- selected_gene_annotations$symbol
 # Reassign columns to groups
