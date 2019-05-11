@@ -536,8 +536,6 @@ if (nrow(res.kegg) > 0 ) {
 
 ## Selected pathway
 
-## Selected pathway
-
 Red/Green - up/downregulated genes in upper vs. lower `r selected_genes` expressing samples. Gray - marginal fold change, yet significant. White - gene is not differentially expressed
 
 ```{r eval=FALSE}
@@ -557,7 +555,7 @@ names(degs.genes) <- degs$symbol
 pv.out <- pathview(gene.data = degs.genes, pathway.id = "04510", species = species, gene.idtype = "SYMBOL", gene.annotpkg = OrgDb, out.suffix = "dn")
 ```
 
-```{r echo=FALSE, out.height='300px', eval=TRUE}
+```{r echo=FALSE, out.height='300px', eval=FALSE}
 knitr::include_graphics('mmu04510.dn.png')
 ```
 
