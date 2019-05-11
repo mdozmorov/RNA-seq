@@ -225,7 +225,70 @@ if (useTPM) {
 }
 ```
 
-# Analysis
+# Visualization
+
+```{r}
+edgeR.dgelist = DGEList(counts = counts[, 7:ncol(counts)], genes = counts$Geneid)
+# Filtering
+keep <- rowSums(cpm(edgeR.dgelist)>1) >= 2
+edgeR.dgelist <- edgeR.dgelist[keep, , keep.lib.sizes=FALSE]
+# Normalization
+edgeR.dgelist = calcNormFactors((edgeR.dgelist), method = "TMM")
+edgeR.dgelist = estimateDisp(edgeR.dgelist)
+```
+
+```{r}
+# Get normalized CPMs
+mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
+rownames(mtx) <- edgeR.dgelist@.Data[[3]][, "genes"]
+mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
+```
+
+### Correlation matrix
+
+```{r}
+IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
+plot_annotations <- data.frame(Group = sample_annotation$Group)
+rownames(plot_annotations) <- rownames(IAC)
+pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
+```
+
+### Principal Components Analysis
+
+```{r}
+# PCA: Check for batch effects. Select one batch, to color points by its assignment
+pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
+data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
+
+# # What correlates with the first component
+# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
+# for (covariate in covariates){
+#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
+#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
+#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
+# }
+
+colorby <- "Group" # covariates[2]
+pt <- ggplot(data = data.frame(pca$x, sample_annotation, samples = sample_annotation$Sample, stringsAsFactors = F), 
+             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
+  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
+  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
+  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
+  geom_text_repel(colour = "black", size = 3) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  labs(color = colorby) +
+  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
+  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
+plot(pt)
+
+# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
+```
+
+# Differential Expression Analysis
 
 Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. Top `r nplot` or less DEGs are visualized.
 
