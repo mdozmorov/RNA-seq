@@ -301,11 +301,19 @@ Samples are very heterogeneous.
 
 # Differential Expression Analysis
 
-Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. Top `r nplot` or less DEGs are visualized.
+- Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. See the total number in the table' annotations. Top `r nplot` or less DEGs are visualized.
+
+Lists of differentially expressed genes are stored in Excel file `r fileName_rna`
+
+**Legend for gene lists:** "Geneid", "symbol", "biotype" "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average Counts Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
+
+**Legend for KEGG pathway enrichment analysis:** "Term" - pathway name; "Overlap" - number of differentially expressed genes out of the total number of genes in the pathway; "P.value", "Adjusted.P.Value" - raw and adjusted for multiple testing p-values; "Genes" - names of differentially expressed genes in the pathway.
+
+<!--**Legend for GO/KEGG functional enrichment results:** "ID" - unique identifier of functional category; "Pvalue" - non-adjusted p-value; "OddsRatio" - enrichment odds ratio; "ExpCount" - number of genes expected to be selected in a category; "Count" - number of genes observed in the current list; "Size" - total number of genes in a category; "Term" - category description; "p.adj" - false discovery rate; "SYMBOL", "ENTREZ" - genes observed in the current list as annotated with a category
 
 Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average counts_subset Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
 
-Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.
+Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.-->
 
 
 ```{r}
@@ -348,63 +356,6 @@ edgeR.dgelist <- edgeR.dgelist[keep, , keep.lib.sizes=FALSE]
 edgeR.dgelist = calcNormFactors((edgeR.dgelist), method = "TMM")
 edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
 ```
-
-```{r eval=FALSE}
-# Get normalized CPMs
-mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
-rownames(mtx) <- edgeR.dgelist@.Data[[3]][, "genes"]
-mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
-
-### Correlation matrix
-
-IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
-plot_annotations <- data.frame(Group = Group)
-rownames(plot_annotations) <- rownames(IAC)
-pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
-
-### Principal Components Analysis
-
-# PCA: Check for batch effects. Select one batch, to color points by its assignment
-pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
-data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
-
-# # What correlates with the first component
-# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
-# for (covariate in covariates){
-#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
-#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
-#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
-#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
-#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
-#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
-# }
-
-colorby <- "Group" # covariates[2]
-pt <- ggplot(data = data.frame(pca$x, sample_annotation_subset, samples = sample_annotation_subset$Sample, stringsAsFactors = F), 
-             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
-  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
-  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
-  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
-  geom_text_repel(colour = "black", size = 3) +
-  geom_hline(yintercept = 0, colour = "gray65") +
-  geom_vline(xintercept = 0, colour = "gray65") +
-  labs(color = colorby) +
-  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
-  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
-plot(pt)
-
-# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
-```
-
-### Differentially expressed genes
-
-- Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. See the total number in the table' annotations. Top `r nplot` or less DEGs are visualized.
-
-Lists of differentially expressed genes are stored in Excel file `r fileName_rna`
-
-**Legend for gene lists:** "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average Counts Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
-
-**Legend for GO/KEGG functional enrichment results:** "ID" - unique identifier of functional category; "Pvalue" - non-adjusted p-value; "OddsRatio" - enrichment odds ratio; "ExpCount" - number of genes expected to be selected in a category; "Count" - number of genes observed in the current list; "Size" - total number of genes in a category; "Term" - category description; "p.adj" - false discovery rate; "SYMBOL", "ENTREZ" - genes observed in the current list as annotated with a category
 
 ```{r}
 # One-way ANOVA analysis
@@ -513,6 +464,7 @@ if( run_gsea == FALSE) {
     }
     # Finally, if something is significant, save that
     if (class(res.kegg) == "data.frame") {
+      res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix
       save_res(res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE], fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
 
     }
@@ -640,3 +592,6 @@ ggplot(gdata_summary, aes(x = Gene, y = value, fill = Group)) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
+
+
+
