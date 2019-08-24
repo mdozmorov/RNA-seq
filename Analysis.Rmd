@@ -11,7 +11,7 @@ output:
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
 # Set up the environment
 library(knitr)
-opts_chunk$set(cache.path='cache/', fig.path='img/', cache=T, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is') #out.width=700, 
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is') #out.width=700, 
 library(pander)
 panderOptions('table.split.table', Inf)
 set.seed(1)
@@ -46,7 +46,8 @@ library(pheatmap)
 library(shiny)
 library(ggplot2)
 library(pheatmap)
-source("https://raw.githubusercontent.com/mdozmorov/enrichR/master/R/api_wrapper.R")
+# source("https://raw.githubusercontent.com/mdozmorov/enrichR/master/R/api_wrapper.R")
+library(enrichR) # devtools::install_github("wjawaid/enrichR")
 source("utils.R")   # Helper functions
 library(annotables) # Annotations of Ensembl IDs
 ```
@@ -54,11 +55,11 @@ library(annotables) # Annotations of Ensembl IDs
 # Settings
 
 ```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Devanand_2018/" # Working directory
-fileName_rna   <- paste0(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
-fileName_tpm   <- paste0(data_dir, "results/TPM.xlsx")  # File to save TPM values
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" # Working directory
+fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
+fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
 p_val_cutoff   <- 0.05 # Regular p-value cutoff
-p_adj_cutoff   <- 0.05 # FDR cutoff
+p_adj_cutoff   <- 0.3 # FDR cutoff
 nplot          <- 50 # How many genes to plot on a heatmap
 nbox           <- 9  # How many genes to plot on a boxplot
 ntable         <- 15 # Number of genes to output in a DEG table
@@ -79,8 +80,8 @@ col3 <- colorRamps::green2red(n = 20)
 
 ```{r}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
-human_analysis <- TRUE
-mouse_analysis <- FALSE
+human_analysis <- FALSE
+mouse_analysis <- TRUE
 
 # Prepate gene annotations, remove non-canonical chromosome names
 if (human_analysis) {
@@ -153,6 +154,7 @@ qc_counts <- data.frame(Status = qc_data$Status, qc_counts[, order(colnames(qc_c
 # Cleanup column names
 colnames(qc_counts) <- sub("X02_subread.align.", "", colnames(qc_counts))
 colnames(qc_counts) <- sub(".bam", "", colnames(qc_counts))
+colnames(qc_counts) <- make.names(colnames(qc_counts))
 # Check is sample annotations anc QC columns match
 all.equal(sample_annotation$Sample, colnames(qc_counts)[2:ncol(qc_counts)])
 ```
@@ -211,6 +213,7 @@ counts <- data.frame(count_data[index, !grepl("bam", colnames(count_data))], cou
 # Cleanup column names
 colnames(counts) <- sub("X02_subread.align.", "", colnames(counts))
 colnames(counts) <- sub(".bam", "", colnames(counts))
+colnames(counts) <- make.names(colnames(counts))
 # Human Ensembl IDs are in the form "ENSG00000225630.1". We need to remove the last part with dot
 if (human_analysis) {
   counts$Geneid <- sapply(counts$Geneid, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
@@ -222,10 +225,10 @@ all.equal(sample_annotation$Sample, colnames(counts)[7:ncol(counts)])
 
 ## Save TPM matrix
 
-Save the expression of all genes across all conditions as log2-transformed TPM values (read, gene expression) in the `r fileName_tpm` file. [More about TPM](https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/). Used to look up any gene and compare its expression across conditions. 
+The expression of all genes across all conditions as log2-transformed TPM values (read, gene expression) is saved in the `r fileName_tpm` file. [More about TPM](https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/). Use to look up any gene and compare its expression across conditions. 
 
 ```{r}
-if (saveTPM) {
+if (saveTPM & !file.exists(fileName_tpm)) {
   source("calcTPM.R")
   TPM <- calcTPM(data = counts[, 7:ncol(counts)], feature_length = counts[, c("Geneid", "Length")])
   TPM <- log2(TPM + 1) # log2 transform
@@ -302,13 +305,24 @@ plot(pt)
 # ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
 ```
 
+Samples are very heterogeneous.
+
+
 # Differential Expression Analysis
 
-Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. Top `r nplot` or less DEGs are visualized.
+- Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. See the total number in the table' annotations. Top `r nplot` or less DEGs are visualized.
+
+Lists of differentially expressed genes are stored in Excel file `r fileName_rna`
+
+**Legend for gene lists:** "Geneid", "symbol", "biotype" "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average Counts Per Million, log2; "LR" - log-likelihood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
+
+**Legend for KEGG pathway enrichment analysis:** "Term" - pathway name; "Overlap" - number of differentially expressed genes out of the total number of genes in the pathway; "P.value", "Adjusted.P.Value" - raw and adjusted for multiple testing p-values; "Genes" - names of differentially expressed genes in the pathway.
+
+<!--**Legend for GO/KEGG functional enrichment results:** "ID" - unique identifier of functional category; "Pvalue" - non-adjusted p-value; "OddsRatio" - enrichment odds ratio; "ExpCount" - number of genes expected to be selected in a category; "Count" - number of genes observed in the current list; "Size" - total number of genes in a category; "Term" - category description; "p.adj" - false discovery rate; "SYMBOL", "ENTREZ" - genes observed in the current list as annotated with a category
 
 Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average counts_subset Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
 
-Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.
+Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.-->
 
 
 ```{r}
@@ -320,13 +334,13 @@ wb <- openxlsx::createWorkbook(fileName_rna)
 
 ## Analysis 1
 
-"AA" vs. "C" comparison
+"WT.PD1.Ab" vs. "WT.IgG" comparison
 
 ```{r}
 # Subset the data, adjust manually
-# index <- sample_annotation$Project == "TAM" & sample_annotation$Cell.Line == "PyMT"
+index <- sample_annotation$Group == "WT.IgG" | sample_annotation$Group == "WT.PD1.Ab"
 # Or, use all the data
-index <- sample_annotation$Sample == sample_annotation$Sample
+# index <- sample_annotation$Sample == sample_annotation$Sample
 
 sample_annotation_subset <- sample_annotation[index, ]
 counts_subset <- counts[, 7:ncol(counts)]
@@ -337,7 +351,7 @@ all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(count
 ```{r}
 # Adjust manually
 Group <- factor(sample_annotation_subset$Group)
-Group <- relevel(Group, ref = "C")
+Group <- relevel(Group, ref = "WT.IgG")
 Group
 design <- model.matrix(~Group, data = Group)
 ```
@@ -353,67 +367,6 @@ edgeR.dgelist = estimateDisp(edgeR.dgelist, design)
 ```
 
 ```{r}
-# Get normalized CPMs
-mtx <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes = TRUE)
-rownames(mtx) <- edgeR.dgelist@.Data[[3]][, "genes"]
-mtx_to_plot <- varFilter(mtx, var.cutoff = 0.75)
-```
-
-### Correlation matrix
-
-```{r}
-IAC <- mtx_to_plot %>% cor(. , use = "pairwise.complete.obs",  method = "pearson")
-plot_annotations <- data.frame(Group = Group)
-rownames(plot_annotations) <- rownames(IAC)
-pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
-```
-
-### Principal Components Analysis
-
-```{r}
-# PCA: Check for batch effects. Select one batch, to color points by its assignment
-pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
-data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
-
-# # What correlates with the first component
-# covariates <- c("Sample_Plate", "Sentrix_ID", "Sentrix_Position", "Sample_Well", "Type", "Donor", "Injury", "Predicted.Gender")
-# for (covariate in covariates){
-#   pca.lm <- lm( as.numeric(PC1) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
-#   print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by PC1, p-value", signif(lmp(pca.lm), 5)))
-#   # pca.lm <- lm( as.numeric(PC2) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
-#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the second principle component, # p-value", signif(lmp(pca.lm), 5)))
-#   # pca.lm <- lm( as.numeric(PC3) ~ factor(eval(parse(text = covariate))), data = cbind(sample_annotation_subset, pca$x))
-#   # print(paste(covariate, "accounts_subset for", signif(summary(pca.lm)$adj.r.squared, 5), "variability explained by the third principle component, # p-value", signif(lmp(pca.lm), 5)))
-# }
-
-colorby <- "Group" # covariates[2]
-pt <- ggplot(data = data.frame(pca$x, sample_annotation_subset, samples = sample_annotation_subset$Sample, stringsAsFactors = F), 
-             aes(x = as.numeric(PC1), y = as.numeric(PC2), label = samples)) +
-  theme(plot.title = element_text(lineheight = 0.8, face="bold")) +
-  ggtitle(paste("PCA with batch, coloring by ", colorby)) +
-  geom_point(aes(color = eval(parse(text = colorby))), size = 3) +
-  geom_text_repel(colour = "black", size = 3) +
-  geom_hline(yintercept = 0, colour = "gray65") +
-  geom_vline(xintercept = 0, colour = "gray65") +
-  labs(color = colorby) +
-  scale_x_continuous(name = paste0("PC1, ", round(summary(pca)$importance[2,1] * 100, digits = 2), "% variability" )) +
-  scale_y_continuous(name = paste0("PC2, ", round(summary(pca)$importance[2,2] * 100, digits = 2), "% variability" ))
-plot(pt)
-
-# ggsave(filename = "Figures/Figure_PCA_withbatch.pdf", plot = pt, height = 8, width = 11)
-```
-
-### Differentially expressed genes
-
-- Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. See the total number in the table' annotations. Top `r nplot` or less DEGs are visualized.
-
-Lists of differentially expressed genes are stored in Excel file `r fileName_rna`
-
-**Legend for gene lists:** "Geneid", "symbol", "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average Counts Per Million, log2; "LR" - log-likelyhood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
-
-**Legend for GO/KEGG functional enrichment results:** "ID" - unique identifier of functional category; "Pvalue" - non-adjusted p-value; "OddsRatio" - enrichment odds ratio; "ExpCount" - number of genes expected to be selected in a category; "Count" - number of genes observed in the current list; "Size" - total number of genes in a category; "Term" - category description; "p.adj" - false discovery rate; "SYMBOL", "ENTREZ" - genes observed in the current list as annotated with a category
-
-```{r}
 # One-way ANOVA analysis
 fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
@@ -421,7 +374,7 @@ lrt <- glmLRT(fit, coef = 2)
 
 res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_1", print_to_file = TRUE)
 
-# res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "DEGs_1", print_to_file = FALSE)
+# res <- p.vals(object = lrt, p_adj_cutoff = 0.1, comparison = "DEGs_1", print_to_file = FALSE)
 # res$logFC <- signif(res$logFC)
 # res$logCPM <- signif(res$logCPM)
 # res$LR <- signif(res$LR)
@@ -455,7 +408,7 @@ Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium e
 ```{r}
 if (nrow(res) > 0) {
   selected_genes = unique(res$symbol[!is.na(res$symbol)])
-  genes_to_boxplot(selected_genes = selected_genes[1:nbox], subset_by = c("WT_minus_Dex", "KO_minus_Dex"))
+  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c("WT.IgG", "WT.PD1.Ab"))
 }
 ```
 
@@ -466,33 +419,67 @@ if (nrow(res) > 0)
   genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = nplot, comparison = "Analysis_1", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
 ```
 
+## KEGG pathway GSEA analysis 
+
+<!--**Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.-->
+
+
 ```{r}
 if( run_gsea == FALSE) {
-  # Subset the number of DEGs for KEGG analysis to the maximum
-  if (nrow(res) > max_kegg_genes) {
-    degs_subset <- res[1:max_kegg_genes, ]
-  } else {
-    degs_subset <- res
-  }
-  # Get list of up- and downregulated genes
-  up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
-  dn.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC < 0 ]))
-  # Run KEGG
-  if (up_dn_separate) {
-    # Analyze up- and downregulated genes separately
-    print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
-    res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
-  } else {
-    # Analyze up- and downregulated genes together
-    print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
-    res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+  websiteLive <- TRUE # Check if EnrichR is up
+  dbs <- listEnrichrDbs()
+  if (is.null(dbs)) websiteLive <- FALSE
+  if(websiteLive) {
+    # Subset the number of DEGs for KEGG analysis to the maximum
+    if (nrow(res) > max_kegg_genes) {
+      degs_subset <- res[1:max_kegg_genes, ]
+    } else {
+      degs_subset <- res
+    }
+    # Get list of up- and downregulated genes
+    up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
+    dn.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC < 0 ]))
+    # Run KEGG
+    if (up_dn_separate) {
+      # Analyze up- and downregulated genes separately
+      print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
+      # res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+      res.kegg    <- NULL # Initially, empty value
+      res.kegg.up <- enrichr(up.genes, databases = KEGG)
+      res.kegg.dn <- enrichr(dn.genes, databases = KEGG)
+      # If significant results are present, save them
+      if(nrow(res.kegg.up[[KEGG]]) > 0 & sum(res.kegg.up[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+        res.kegg.up <- as.data.frame(res.kegg.up[[KEGG]])
+        res.kegg.up <- res.kegg.up[res.kegg.up$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg.up <- res.kegg.up %>% mutate(Direction = "UP")
+        res.kegg    <- rbind(res.kegg, res.kegg.up)
+      }
+      if(nrow(res.kegg.dn[[KEGG]]) > 0 & sum(res.kegg.dn[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+        res.kegg.dn <- as.data.frame(res.kegg.dn[[KEGG]])
+        res.kegg.dn <- res.kegg.dn[res.kegg.dn$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg.dn <- res.kegg.dn %>% mutate(Direction = "DN")
+        res.kegg    <- rbind(res.kegg, res.kegg.dn)
+      }
+    } else {
+      # Analyze up- and downregulated genes together
+      print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
+      # res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+      res.kegg <- enrichr(unique(c(up.genes, dn.genes)), databases = KEGG) # KEGG results only
+      # If significant results are present, save them
+      if(nrow(res.kegg[[KEGG]]) > 0 & sum(res.kegg[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+        res.kegg <- as.data.frame(res.kegg[[KEGG]])
+        res.kegg <- res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+      }
+    }
+    # Finally, if something is significant, save that
+    if (class(res.kegg) == "data.frame") {
+      res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix
+      save_res(res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE], fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+
+    }
   }
 }
 ```
-
-## KEGG pathway GSEA analysis 
-
-**Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.
 
 ```{r}
 if (run_gsea == TRUE) {
@@ -541,8 +528,8 @@ A total of `r nrow(res.kegg)` KEGG pathways were detected as significantly affec
 ```{r}
 # Display the results
 # DT::datatable(res.kegg)
-if (nrow(res.kegg) > 0 ) {
-  kable(res.kegg[1:min(ntable, nrow(res.kegg)), ])
+if (class(res.kegg) == "data.frame") {
+  kable(res.kegg[1:min(ntable, nrow(res.kegg)), , drop = FALSE])
 }
 ```
 
@@ -567,13 +554,13 @@ names(degs.genes) <- degs$ENTREZID
 pv.out <- pathview(gene.data = degs.genes, pathway.id = "04658", species = species, gene.idtype = "ENTREZ", gene.annotpkg = OrgDb, out.suffix = "Analysis_1")
 ```
 
-```{r echo=FALSE, out.height='300px', eval=TRUE}
+```{r eval=FALSE, echo=FALSE, out.height='300px'}
 knitr::include_graphics('mmu04658.Analysis_1.png')
 ```
 
 ## Expression barplots of selected genes
 
-```{r fig.height=3, fig.width=5}
+```{r eval = FALSE, fig.height=3, fig.width=5}
 selected_genes <- c("Sphk1", "Sphk2")
 # Gen Ensembl IDs
 selected_gene_annotations <- gene_annotations[ gene_annotations$symbol %in% selected_genes, ]
