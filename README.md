@@ -21,6 +21,8 @@ VLI11_C_S62_L008_R1_001.txt.gz,C
 
 - `Figure_clusterProfiler_asis.Rmd` - Takes the results of edgeR analysis from an Excel file, performs GO and KEGG GSEA and plots the results as horizontal barplots, sorted by p-value, as they come out of the enrichment analysis.
 
+- `Pathview.Rmd` - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis.Rmd`
+
 - `utils.R` - helper functions
 
 ## Misc
