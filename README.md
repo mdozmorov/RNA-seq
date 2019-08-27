@@ -21,6 +21,8 @@ VLI11_C_S62_L008_R1_001.txt.gz,C
 
 - `Figure_clusterProfiler_asis.Rmd` - Takes the results of edgeR analysis from an Excel file, performs GO and KEGG GSEA and plots the results as horizontal barplots, sorted by p-value, as they come out of the enrichment analysis.
 
+- `Figure_heatmap.Rmd` - make heatmap for selected genes. Uses `TMP.xlsx` produced by `Analysis.Rmd` and a custom signature of gene names
+
 - `Pathview.Rmd` - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis.Rmd`
 
 - `utils.R` - helper functions

@@ -1,0 +1,78 @@
+---
+title: "Figure heatmap"
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: cerulean
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is', fig.width = 10, fig.height = 6) #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+```{r libraries}
+library(readr)
+library(pheatmap)
+```
+
+```{r settings}
+# Data
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" # Working directory
+fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
+fileName_signature <- "data/signature.txt" # Text file with gene name per line signature
+
+# Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
+col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
+# col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
+# col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
+# col3 <- colorRamps::green2red(n = 20)
+```
+
+
+```{r}
+# TPM data
+mtx <- read.xlsx(fileName_tpm) 
+# Signature data
+signature <- readLines(fileName_signature)
+setdiff(signature, mtx$symbol) # Gene names not found in TPM file
+```
+
+```{r}
+# Sample annotation
+sample_annotation <- read_csv(paste0(data_dir, "data/sample_annotation.csv"))
+sample_annotation$Sample <- make.names(sample_annotation$Sample)
+sample_annotation$Sample <- sub(".txt.gz", "", sample_annotation$Sample)
+all.equal(sample_annotation$Sample, colnames(mtx)[grepl("R1_001", colnames(mtx))])
+```
+
+```{r}
+# Subset the data, adjust manually
+index <- sample_annotation$Group == "WT.IgG" | sample_annotation$Group == "KO.PD1.Ab"
+sample_annotation_subset <- sample_annotation[index, ]
+mtx_subset <- mtx[mtx$symbol %in% signature, colnames(mtx) %in% sample_annotation_subset$Sample]
+rownames(mtx_subset) <- mtx$symbol[mtx$symbol %in% signature]
+all.equal(sample_annotation_subset$Sample, colnames(mtx_subset))
+```
+
+
+```{r}
+# Make group annotation
+annotation_col <- data.frame(Group = sample_annotation_subset$Group)
+rownames(annotation_col) <- sample_annotation_subset$Sample
+# Plotting
+pdf("Figure_heatmap.pdf", width = 3, height = 3.5)
+pheatmap(mtx_subset, scale = "row", cluster_cols = FALSE, cluster_rows = TRUE, color = col3, treeheight_row = 0, treeheight_col = 0, show_rownames = TRUE, show_colnames = FALSE, annotation_col = annotation_col)
+dev.off()
+```
+
