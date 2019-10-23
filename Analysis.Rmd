@@ -448,15 +448,15 @@ if( run_gsea == FALSE) {
       res.kegg.up <- enrichr(up.genes, databases = KEGG)
       res.kegg.dn <- enrichr(dn.genes, databases = KEGG)
       # If significant results are present, save them
-      if(nrow(res.kegg.up[[KEGG]]) > 0 & sum(res.kegg.up[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+      if(nrow(res.kegg.up[[KEGG]]) > 0 & sum(res.kegg.up[[KEGG]]$P.value < p_val_cutoff) > 0) {
         res.kegg.up <- as.data.frame(res.kegg.up[[KEGG]])
-        res.kegg.up <- res.kegg.up[res.kegg.up$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg.up <- res.kegg.up[res.kegg.up$P.value < p_val_cutoff, , drop = FALSE]
         res.kegg.up <- res.kegg.up %>% mutate(Direction = "UP")
         res.kegg    <- rbind(res.kegg, res.kegg.up)
       }
-      if(nrow(res.kegg.dn[[KEGG]]) > 0 & sum(res.kegg.dn[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+      if(nrow(res.kegg.dn[[KEGG]]) > 0 & sum(res.kegg.dn[[KEGG]]$P.value < p_val_cutoff) > 0) {
         res.kegg.dn <- as.data.frame(res.kegg.dn[[KEGG]])
-        res.kegg.dn <- res.kegg.dn[res.kegg.dn$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg.dn <- res.kegg.dn[res.kegg.dn$P.value < p_val_cutoff, , drop = FALSE]
         res.kegg.dn <- res.kegg.dn %>% mutate(Direction = "DN")
         res.kegg    <- rbind(res.kegg, res.kegg.dn)
       }
@@ -466,15 +466,15 @@ if( run_gsea == FALSE) {
       # res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
       res.kegg <- enrichr(unique(c(up.genes, dn.genes)), databases = KEGG) # KEGG results only
       # If significant results are present, save them
-      if(nrow(res.kegg[[KEGG]]) > 0 & sum(res.kegg[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+      if(nrow(res.kegg[[KEGG]]) > 0 & sum(res.kegg[[KEGG]]$P.value < p_val_cutoff) > 0) {
         res.kegg <- as.data.frame(res.kegg[[KEGG]])
-        res.kegg <- res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg <- res.kegg[res.kegg$P.value < p_val_cutoff, , drop = FALSE]
       }
     }
     # Finally, if something is significant, save that
     if (class(res.kegg) == "data.frame") {
       res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix
-      save_res(res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE], fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+      save_res(res.kegg[res.kegg$P.value < p_val_cutoff, , drop = FALSE], fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
 
     }
   }
