@@ -21,7 +21,7 @@ options(stringsAsFactors = FALSE)
 
 # Methods
 
-Total RNA will be isolated with an RNeasy Mini kit (Qiagen) according to the manufacturer’s recommendations. RNA integrity (RIN) and yield will be assessed on an Agilent 2100 Bioanalyzer, and samples with RIN≥ 7 will be selected. Prior to the RNA-Seq, ribosomal RNA will be depleted from the samples using the RiboMinus&trade; Human/Mouse Transcriptome Isolation Kit (Thermo Fisher Scientific, Waltham, MA). All samples were sequenced on the Illumina Hi-Seq ??? sequencer. ~29 million 50bp single-end reads per sample were obtained. 
+Total RNA will be isolated with an RNeasy Mini kit (Qiagen) according to the manufacturer’s recommendations. RNA integrity (RIN) and yield will be assessed on an Agilent 2100 Bioanalyzer, and samples with RIN above 7 will be selected. Prior to the RNA-Seq, ribosomal RNA will be depleted from the samples using the RiboMinus&trade; Human/Mouse Transcriptome Isolation Kit (Thermo Fisher Scientific, Waltham, MA). All samples were sequenced on the Illumina Hi-Seq ??? sequencer. ~29 million 50bp single-end reads per sample were obtained. 
 
 Sequencing adapters were removed using `Trimmomatic` v.0.33 [@Bolger:2014aa]. Quality control at each processing step was performed using the `FastQC` tool v0.11.2 (quality base calls, CG content distribution, duplicate levels, complexity level) [@andrews2010fastqc]. The Mouse GRCm38/mm10 reference genome was obtained from UCSC Genome Browser Gateway (http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/chromFa.tar.gz), and the corresponding gene annotation file was obtained from Ensemble (ftp://ftp.ensembl.org/pub/release-83/gtf/mus_musculus/Mus_musculus.GRCm38.83.gtf.gz) on 02/20/2016. Only autosomes, mitochondrial, and sex chromosomes were used. Reads were aligned using using the `subread` v.1.6.2 aligner [@Liao:2013aa]. We obtained gene counts for each sample based on the last hg38 version of Ensembl transcriptome (v.87) using the `featureCounts` v.1.2.6 software [@Liao:2014aa]. RNA-seq counts were preprocessed and analyzed for differential expression using the `edgeR` v.3.24.3 [@Robinson:2010aa] R package. P-values for differentialy expressed genes were corrected using a False Discovery Rate (FDR) multiple testing correction method [@benjamini1995controlling]. 
 
@@ -55,11 +55,11 @@ library(annotables) # Annotations of Ensembl IDs
 # Settings
 
 ```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" # Working directory
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Grossman/2019-10.RNA-seq/" # Working directory
 fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
 fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
 p_val_cutoff   <- 0.05 # Regular p-value cutoff
-p_adj_cutoff   <- 0.3 # FDR cutoff
+p_adj_cutoff   <- 0.01 # FDR cutoff
 nplot          <- 50 # How many genes to plot on a heatmap
 nbox           <- 9  # How many genes to plot on a boxplot
 ntable         <- 15 # Number of genes to output in a DEG table
@@ -334,13 +334,13 @@ wb <- openxlsx::createWorkbook(fileName_rna)
 
 ## Analysis 1
 
-"WT.PD1.Ab" vs. "WT.IgG" comparison
+"KO" vs. "WT" comparison
 
 ```{r}
 # Subset the data, adjust manually
-index <- sample_annotation$Group == "WT.IgG" | sample_annotation$Group == "WT.PD1.Ab"
+# index <- sample_annotation$Group == "WT.IgG" | sample_annotation$Group == "WT.PD1.Ab"
 # Or, use all the data
-# index <- sample_annotation$Sample == sample_annotation$Sample
+index <- sample_annotation$Sample == sample_annotation$Sample
 
 sample_annotation_subset <- sample_annotation[index, ]
 counts_subset <- counts[, 7:ncol(counts)]
@@ -351,7 +351,7 @@ all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 7:ncol(count
 ```{r}
 # Adjust manually
 Group <- factor(sample_annotation_subset$Group)
-Group <- relevel(Group, ref = "WT.IgG")
+Group <- relevel(Group, ref = "WT")
 Group
 design <- model.matrix(~Group, data = Group)
 ```
@@ -408,7 +408,7 @@ Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium e
 ```{r}
 if (nrow(res) > 0) {
   selected_genes = unique(res$symbol[!is.na(res$symbol)])
-  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c("WT.IgG", "WT.PD1.Ab"))
+  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c("WT", "KO"))
 }
 ```
 
@@ -551,11 +551,11 @@ colnames(degs) <- c("ENTREZID", "logFC")
 degs.genes <- degs$logFC
 names(degs.genes) <- degs$ENTREZID
 # Adjust as needed
-pv.out <- pathview(gene.data = degs.genes, pathway.id = "04658", species = species, gene.idtype = "ENTREZ", gene.annotpkg = OrgDb, out.suffix = "Analysis_1")
+pv.out <- pathview(gene.data = degs.genes, pathway.id = "04975", species = species, gene.idtype = "ENTREZ", gene.annotpkg = OrgDb, out.suffix = "Analysis_1")
 ```
 
-```{r eval=FALSE, echo=FALSE, out.height='300px'}
-knitr::include_graphics('mmu04658.Analysis_1.png')
+```{r eval=TRUE, echo=FALSE, out.height='300px'}
+knitr::include_graphics('mmu04975.Analysis_1.png')
 ```
 
 ## Expression barplots of selected genes
