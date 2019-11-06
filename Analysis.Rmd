@@ -21,7 +21,7 @@ options(stringsAsFactors = FALSE)
 
 # Methods
 
-Total RNA will be isolated with an RNeasy Mini kit (Qiagen) according to the manufacturer’s recommendations. RNA integrity (RIN) and yield will be assessed on an Agilent 2100 Bioanalyzer, and samples with RIN≥ 7 will be selected. Prior to the RNA-Seq, ribosomal RNA will be depleted from the samples using the RiboMinus&trade; Human/Mouse Transcriptome Isolation Kit (Thermo Fisher Scientific, Waltham, MA). All samples were sequenced on the Illumina Hi-Seq ??? sequencer. ~29 million 50bp single-end reads per sample were obtained. 
+Total RNA will be isolated with an RNeasy Mini kit (Qiagen) according to the manufacturer’s recommendations. RNA integrity (RIN) and yield will be assessed on an Agilent 2100 Bioanalyzer, and samples with RIN larger than 7 will be selected. Prior to the RNA-Seq, ribosomal RNA will be depleted from the samples using the RiboMinus&trade; Human/Mouse Transcriptome Isolation Kit (Thermo Fisher Scientific, Waltham, MA). All samples were sequenced on the Illumina Hi-Seq ??? sequencer. ~29 million 50bp single-end reads per sample were obtained. 
 
 Sequencing adapters were removed using `Trimmomatic` v.0.33 [@Bolger:2014aa]. Quality control at each processing step was performed using the `FastQC` tool v0.11.2 (quality base calls, CG content distribution, duplicate levels, complexity level) [@andrews2010fastqc]. The Mouse GRCm38/mm10 reference genome was obtained from UCSC Genome Browser Gateway (http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/chromFa.tar.gz), and the corresponding gene annotation file was obtained from Ensemble (ftp://ftp.ensembl.org/pub/release-83/gtf/mus_musculus/Mus_musculus.GRCm38.83.gtf.gz) on 02/20/2016. Only autosomes, mitochondrial, and sex chromosomes were used. Reads were aligned using using the `subread` v.1.6.2 aligner [@Liao:2013aa]. We obtained gene counts for each sample based on the last hg38 version of Ensembl transcriptome (v.87) using the `featureCounts` v.1.2.6 software [@Liao:2014aa]. RNA-seq counts were preprocessed and analyzed for differential expression using the `edgeR` v.3.24.3 [@Robinson:2010aa] R package. P-values for differentialy expressed genes were corrected using a False Discovery Rate (FDR) multiple testing correction method [@benjamini1995controlling]. 
 
@@ -74,8 +74,8 @@ saveTPM  <- TRUE # Whether or not to save expression counts to TPM
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
 col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
-col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
-col3 <- colorRamps::green2red(n = 20)
+col3 <- colorRampPalette(c('red', 'black', 'green'))(20)
+# col3 <- colorRamps::green2red(n = 20)
 ```
 
 ```{r}
