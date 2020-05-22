@@ -74,7 +74,7 @@ saveTPM  <- TRUE # Whether or not to save expression counts to TPM
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
 col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
-col3 <- colorRampPalette(c('red', 'black', 'green'))(20)
+col3 <- colorRampPalette(c('green', 'black', 'red'))(20)
 # col3 <- colorRamps::green2red(n = 20)
 ```
 
