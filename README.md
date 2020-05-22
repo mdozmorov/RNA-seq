@@ -1,6 +1,12 @@
 # RNA-seq analysis pipeline, featureCounts input, edgeR, functional enrichment, visualization
 
-- `Analysis_featurecounts.Rmd` - main RNA-seq analysis pipeline, for `featureCount` counts. Prerequisites:
+- `Analysis_STAR.Rmd` - RNA-seq analysis pipeline for `STAR` counts. Prerequisites:
+    - A path to data folder. This folder should have 3 subfolders:
+        - `02_STAR-align` - gzipped count files with `.tab` extension outputted by `STAR` aligner
+        - `results` - folder where the results will be stored
+        - `data` - Must have `sample_annotation.csv` file, example below
+
+- `Analysis_featurecounts.Rmd` - RNA-seq analysis pipeline for `featureCount` counts. Prerequisites:
     - A path to data folder. This folder should have 3 subfolders:
         - `03_featureCount` - gzipped count files outputted by `featureCount`
         - `results` - folder where the results will be stored
