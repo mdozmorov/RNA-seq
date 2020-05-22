@@ -40,7 +40,7 @@ Scripts for running RNA-seq preprocessing steps on a cluster using PBS job submi
 - `submit01_trimgalore.sh` - Adapter trimming using TrimGalore
 - `submit02_STAR-index.sh` - Index the genome for the `STAR` aligner
 - `submit02_STAR.sh` - Align samples using `STAR`. Requires `input01_toStarAlign.list` text file with the list of input files, each string contains (comma-separated) file name(s), space separates first and second read pairs
-
+- `submit05_BAFExtract.sh` - [BAFExtract](https://github.com/akdess/BAFExtract) run for [CaSpER](https://github.com/akdess/CaSpER) pipeline detecting CNVs from RNA-seq data
 
 ## Misc
 
