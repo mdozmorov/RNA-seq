@@ -33,6 +33,15 @@ VLI11_C_S62_L008_R1_001.txt.gz,C
 
 - `utils.R` - helper functions
 
+## `scripts` folder
+
+Scripts for running RNA-seq preprocessing steps on a cluster using PBS job submission system. `subread-featurecounts` scripts are in the [dcaf/ngs.rna-seq](https://github.com/mdozmorov/dcaf/tree/master/ngs.rna-seq) repository
+
+- `submit01_trimgalore.sh` - Adapter trimming using TrimGalore
+- `submit02_STAR-index.sh` - Index the genome for the `STAR` aligner
+- `submit02_STAR.sh` - Align samples using `STAR`. Requires `input01_toStarAlign.list` text file with the list of input files, each string contains (comma-separated) file name(s), space separates first and second read pairs
+
+
 ## Misc
 
 - DESeq results to pathways in 60 Seconds with the fgsea package, https://stephenturner.github.io/deseq-to-fgsea/
