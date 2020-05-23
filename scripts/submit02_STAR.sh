@@ -28,7 +28,8 @@ mkdir -p $DIROUT
 
 # List of input files, each string contains (comma-separated) file name(s)
 # Space separates first and second read pairs
-# find 01_trimmed/ -type f -name "*.gz" | sort > input01_toStarAlign.list
+# find 01_trimmed/ -type f -name "*val_1.fq.gz" | sort > input01_toStarAlign.list
+# find 01_trimmed/ -type f -name "*val_2.fq.gz" | sort >> input01_toStarAlign.list
 INPUT=input01_toStarAlign.list
 
 
