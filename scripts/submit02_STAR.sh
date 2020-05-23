@@ -40,9 +40,11 @@ cat $INPUT | while read read1 read2
 do
 	prefix=$(echo $read1 | cut -f1 -d "," | xargs basename | sed 's/_L006_R1_001_val_1\.fq\.gz//')
 	echo "Starting alignment of $prefix on "`date` 
-	STAR --runThreadN 4 --genomeDir $DIRINDEX --readFilesIn $read1 $read2 --readFilesCommand zcat --outSAMtype BAM Unsorted --outSAMorder Paired --outReadsUnmapped Fastx --outFileNamePrefix $DIROUT/$prefix. --sjdbGTFfile $DIRINDEX"/"$GENINDEX --quantMode GeneCounts --outFilterMultimapNmax 10
+	STAR --runThreadN 4 --genomeDir $DIRINDEX --readFilesIn $read1 $read2 --readFilesCommand zcat --outSAMtype BAM Unsorted --outSAMorder Paired --outReadsUnmapped Fastx --outFileNamePrefix $DIROUT/$prefix. --sjdbGTFfile $DIRINDEX"/"$GENINDEX --quantMode GeneCounts --outFilterMultimapNmax 10 --bamRemoveDuplicatesType UniqueIdenticalNotMulti
 	echo "Finished alignment of $prefix on "`date`
 
 done
 
 echo "Completed STAR alignment on "`date`
+
+# Duplicate removal: https://github.com/alexdobin/STAR/issues/175
