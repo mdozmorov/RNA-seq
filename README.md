@@ -46,7 +46,7 @@ multiqc --filename multiqc_01_trimmed.html --outdir multiqc_01_trimmed 01_trimme
 multiqc --filename multiqc_02_STAR-align.html --outdir multiqc_02_STAR-align 02_STAR-align/
 ```
 
-
+- `submit05_BAFExtract-index.sh` - indexing the genome for [BAFExtract](https://github.com/akdess/BAFExtract) 
 - `submit05_BAFExtract.sh` - [BAFExtract](https://github.com/akdess/BAFExtract) run for [CaSpER](https://github.com/akdess/CaSpER) pipeline detecting CNVs from RNA-seq data
 
 ## Misc
