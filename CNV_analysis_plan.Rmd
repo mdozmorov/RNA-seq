@@ -1,0 +1,39 @@
+---
+output:
+  pdf_document: default
+---
+
+# CNV detection from RNA-seq data
+
+[CaSpER](https://github.com/akdess/CaSpER) pipeline for detecting CNVs from RNA-seq data does not provide instructions for aligning sequencing reads to the reference genome to generate BAM files. These alignment steps are critical, as the reference genome comes in slightly different formats. These differences make processed BAM files incompatible with the defaults of CaSpER and BAFExtract. One way to solve this incompatibility is to prepare the correct genome and process the sequencing data to generate BAM files compatible with CaSpER pipeline.
+
+## Genome
+
+CaSpER seems to be compatible with the genome version from UCSC genome browser. See https://hgdownload.soe.ucsc.edu/downloads.html#human and https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/
+
+- Download hg38 **genome sequence** in FASTA format
+    - **Modify, update:** data downloaded from wget hhttp://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chromFa.tar.gz, 12/10/2015
+- Uncompress and create a single FASTA file with canonical chromosome names
+    - Use order of the chromosomes as in CaSpER's `chr_ids.txt` file: 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 1, 20, 21, 22, 2, 3, 4, 5, 6, 7, 8, 9, M, X, Y
+    - **Modify, update:** cat chr1.fa chr2.fa chr3.fa chr4.fa chr5.fa chr6.fa chr7.fa chr8.fa chr9.fa chr10.fa chr11.fa chr12.fa chr13.fa chr14.fa chr15.fa chr16.fa chr17.fa chr18.fa chr19.fa chr20.fa chr21.fa chr22.fa chrX.fa chrY.fa chrM.fa > hg38.fa
+
+- Download hg38 gene annotation GTF file
+    - ensGene from https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/genes/
+
+## Data alignment
+
+- See `scripts` notes at https://github.com/mdozmorov/RNA-seq
+
+- FASTQ files will be provided. Single-end sequencing
+
+- Install TrimGalore (requires cutadapt and fastqc) and trim the adapters from each FASTQ file
+
+- Install STAR aligner
+- Create index hg38 genome for the STAR aligner from the FASTA file created above
+- Align the trimmed FASTQ files to the hg38 genome. Outcome is BAM files
+
+## CaSpER
+
+- Create index hg38 genome to the BAFExtract tool
+- Run BAFExtract on the BAM files to create `*.snp` files
+- Run CaSpER
