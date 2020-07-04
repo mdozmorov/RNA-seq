@@ -135,11 +135,15 @@ sample_annotation$Group   <- factor(sample_annotation$Group)
 # Load data (STAR)
 
 ```{r multiFCfile, eval=TRUE, cache=TRUE}
+# Strandedness column selection
+# https://chipster.csc.fi/manual/library-type-summary.html 
+column_star <- 4 # counts for the 2nd read strand aligned with RNA (Option "-s reverse" and "library-type fr-firststrand")
 counts   <- cbind() # Count matrix
 count_colnames <- c()     # Count matrix column names
 files_counts <- list.files(path = paste0(data_dir, "02_STAR-align/"), pattern = "*.tab.gz")
 for (f in files_counts) {
   count_data <- read.table(paste0(data_dir, "02_STAR-align/", f), sep = "\t", header = FALSE)
+  # sapply(count_data[5:row(count_data), 2:ncol(count_data)], sum) # Check strandedness, which column has the maximum number, change column_star above
   counts <- cbind(counts, count_data[, column_star]) # Select the right strandedness column
   count_colnames <- c(count_colnames, sub(".ReadsPerGene.out.tab", "", f))
 }
@@ -173,6 +177,7 @@ if (saveTPM & !file.exists(fileName_tpm)) {
   TPM <- data.frame(ensgene = counts_for_tpm[, "Geneid"], TPM)
   # Add gene description
   TPM <- inner_join(TPM, gene_annotations, by = "ensgene")
+  TPM <- TPM[!duplicated(TPM), ]
   # Save the data
   write_xlsx(TPM, fileName_tpm)
 }
