@@ -1,0 +1,16 @@
+---
+output:
+  pdf_document: default
+---
+
+# Custom Gene Set Enrichment Analysis (GSEA)
+
+- Aim 1: Perform functional enrichment analysis (GSEA) of a gene list on a custom gene signature
+    - 1.1, GSEA of a gene list on MSigDb signatures
+    - 1.2, GSEA of a gene list on a custom gene signature
+    - 1.3, Make GSEA enrichment plot
+
+- Review slides and references in the "14 - Functional enrichment analysis" section at https://mdozmorov.github.io/BIOS567.2017/syllabus/
+
+- [clusterProfiler](https://bioconductor.org/packages/clusterProfiler/) is the R package to perform these analyses. Read the [clusterProfiler's manual](https://yulab-smu.github.io/clusterProfiler-book/)
+
