@@ -253,7 +253,7 @@ Samples are heterogeneous.
 ```{r}
 counts_average <- data.frame(Geneid = counts$Geneid, Mean = rowMeans(counts[, colnames(counts) != "Geneid"]))
 counts_average <- counts_average[order(counts_average$Mean, decreasing = TRUE), ]
-counts_average <- inner_join(counts_average, grcm38[, c("ensgene", "symbol", "description")], by = c("Geneid" = "ensgene"))
+counts_average <- inner_join(counts_average, gene_annotations[, c("ensgene", "symbol", "description")], by = c("Geneid" = "ensgene"))
 ```
 
 ```{r}
@@ -271,7 +271,7 @@ pander(counts_average[(nrow(counts_average) - ntable):nrow(counts_average), ])
 
 - Differentially espressed genes (DEGs) detected at False Discovery Rate (FDR) `r p_adj_cutoff`. See the total number in the table' annotations. Top `r nplot` or less DEGs are visualized.
 
-Lists of differentially expressed genes are stored in Excel file `r fileName_rna`
+Lists of differentially expressed genes are stored in Excel file `r fileName_rna`. Results corresponding to Analysis 1, 2 etc. are stored in sheets with prefixes "1.", "2." etc. Sheets with suffexes "protein-coding", "lncRNA", and "other" store differentially expressed transcripts of the corresponding types. "KEGG" sheet, if present, contains pathways significantly enriched in differentially expressed protein-coding genes.
 
 **Legend for gene lists:** "Geneid", "symbol", "biotype" "description" - gene annotations; "Length" - length of a gene in bp; "logFC" - log fold change; "logCPM" - average Counts Per Million, log2; "LR" - log-likelihood; "P.Val"/"adj.P.Val" - non-/FDR-adjusted p-value.
 
@@ -284,16 +284,9 @@ Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Le
 Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.-->
 
 
-```{r}
-# Save differentially expressed genes
-unlink(fileName_rna)
-# Create (or, load)  Excel file
-wb <- openxlsx::createWorkbook(fileName_rna)
-```
-
 ## Exclude selected samples, if needed
 
-```{r}
+```{r eval=FALSE}
 samples_to_exclude <- c("TM3_S50", "M3_S46")
 index <- !(sample_annotation$Sample %in% samples_to_exclude)
 sample_annotation <- sample_annotation[index, ]
@@ -343,7 +336,7 @@ fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
 lrt <- glmLRT(fit, coef = 2)
 
-res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_1", print_to_file = TRUE)
+res.full <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_1", print_to_file = FALSE)
 
 # res <- p.vals(object = lrt, p_adj_cutoff = 0.1, comparison = "DEGs_1", print_to_file = FALSE)
 # res$logFC <- signif(res$logFC)
@@ -354,10 +347,9 @@ res <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_
 # datatable(res)
 ```
 
-Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated.
-
+Total number of differentially expressed genes: `r nrow(res.full)`, `r nrow(res.full[ res.full$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res.full[ res.full$logFC < 0, , drop = FALSE])` are downregulated.
 ```{r}
-res <- res[ res$biotype == "protein_coding", ]
+res <- res.full[ res.full$biotype == "protein_coding" & !is.na(res.full$symbol), ]
 ```
 
 Stats after selecting for protein-coding genes only.  
@@ -442,12 +434,6 @@ if( run_gsea == FALSE) {
         res.kegg <- res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
       }
     }
-    # Finally, if something is significant, save that
-    if (class(res.kegg) == "data.frame") {
-      res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix
-      save_res(res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE], fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
-
-    }
   }
 }
 ```
@@ -501,6 +487,20 @@ A total of `r nrow(res.kegg)` KEGG pathways were detected as significantly affec
 # DT::datatable(res.kegg)
 if (class(res.kegg) == "data.frame") {
   kable(res.kegg[1:min(ntable, nrow(res.kegg)), , drop = FALSE])
+}
+```
+
+```{r}
+# Save the results into a list, for future saving to Excel
+x1 <- list(res.full[res.full$biotype == "protein_coding" & !is.na(res.full$biotype), ],
+           res.full[res.full$biotype == "lincRNA" & !is.na(res.full$biotype), ],
+           res.full[!(res.full$biotype %in% c("protein_coding", "lincRNA")) & !is.na(res.full$biotype), ])
+names(x1) <- c("1.protein-coding", "1.lincRNA", "1.other")
+# If something is significant, add KEGG results
+if (class(res.kegg) == "data.frame") {
+  res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix
+  x1 <- c(x1, list(res.kegg))
+  names(x1)[length(x1)] <- "1.KEGG"
 }
 ```
 
