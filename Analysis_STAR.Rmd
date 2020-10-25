@@ -74,6 +74,11 @@ run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise,
 saveTPM  <- FALSE # Whether or not to save expression counts to TPM
 # Strandedness column selection
 # https://chipster.csc.fi/manual/library-type-summary.html 
+# https://www.biostars.org/p/218995/
+# column 1: gene ID
+# column 2: counts for unstranded RNA-seq
+# column 3: counts for the 1st read strand aligned with RNA (htseq-count option -s yes)
+# column 4: counts for the 2nd read strand aligned with RNA (htseq-count option -s reverse)
 column_star <- 4 # counts for the 2nd read strand aligned with RNA (Option "-s reverse" and "library-type fr-firststrand")
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
 col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
@@ -460,12 +465,12 @@ if (run_gsea == TRUE) {
   set.seed(1)
   ego3 <- gseKEGG(geneList     = geneList,
                   organism     = species,
-                  nPerm        = nperm,
+                  # nPerm        = nperm,
                   minGSSize    = 10,
                   pvalueCutoff = 1,
                   verbose      = FALSE)
   # Get summary
-  ego3 <- setReadable(ego3, OrgDb = OrgDb, keytype = "ENTREZID")
+  ego3 <- setReadable(ego3, OrgDb = OrgDb, keyType = "ENTREZID")
   res.kegg <- as.data.frame(ego3)
   # Save the full results
   save_res(res.kegg, fileName = fileName_rna, wb = wb, sheetName = "KEGG_GSEA")

@@ -68,8 +68,12 @@ kegg <- read.xlsx(fileName_rna, sheet = kegg_sheet) # All significant KEGG pathw
 kegg_names <- kegg$Term[1:min(n_pathways, nrow(kegg))] # Text names
 xx <- as.data.frame(KEGGPATHNAME2ID) # Text to ID mapping
 setdiff(kegg_names, xx$path_name) # Names that did not map
-kegg_unmapped <- c("04658", "04659", "05170") # Manually map unmapped ones
-kegg_ids <- c(xx$path_id[xx$path_name %in% kegg_names], kegg_unmapped) # All KEGG IDs
+# Manually map unmapped IDs
+# kegg_unmapped <- c("04658", "04659", "05170") # Manually map unmapped ones
+kegg_unmapped <- NULL # Use if all mapped
+kegg_ids <- c(xx$path_id[xx$path_name %in% kegg_names]) # All KEGG IDs
+kegg_ids <- kegg_ids[match(kegg_names, xx$path_name[xx$path_name %in% kegg_names])] # Match name order
+kegg_ids <- c(kegg_ids, kegg_unmapped) # Attach unmapped
 
 i <- 1 # Counter
 # Cycle through each KEGG ID
