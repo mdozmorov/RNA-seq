@@ -6,6 +6,14 @@
         - `results` - folder where the results will be stored
         - `data` - Must have `sample_annotation.csv` file, example below
 
+- `enrichR_analysis.Rmd` - Analyze gene lists using [enrichR](https://cran.r-project.org/package=enrichR). Analyze all genes, and up- and downregulated genes separately. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`.
+
+- `enrichR_plot.Rmd` - barplot of selected enrichment results, similar to [Example](examples/Figure_clusterProfiler.pdf). WIP
+
+- `Pathview.Rmd` - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`. [Example](examples/pathview_example.pdf)
+
+### Outdated scripts
+
 - `Analysis_featurecounts.Rmd` - RNA-seq analysis pipeline for `featureCount` counts. Prerequisites:
     - A path to data folder. This folder should have 3 subfolders:
         - `03_featureCount` - gzipped count files outputted by `featureCount`
@@ -21,15 +29,15 @@ VLI11_C_S62_L007_R1_001.txt.gz,C
 VLI11_C_S62_L008_R1_001.txt.gz,C
 ```
 
-- `calcTPM.R` - a function to calculate TPMs from gene counts
-
-- `Figure_clusterProfiler_nes.Rmd` - Takes the results of edgeR analysis from an Excel file, performs GO and KEGG GSEA and plots the results as horizontal barplots, sorted by normalized enrichment score (NES). [Example](Figure_clusterProfiler.pdf)
+- `Figure_clusterProfiler_nes.Rmd` - Takes the results of edgeR analysis from an Excel file, performs GO and KEGG GSEA and plots the results as horizontal barplots, sorted by normalized enrichment score (NES). [Example](examples/Figure_clusterProfiler.pdf)
 
 - `Figure_clusterProfiler_asis.Rmd` - Takes the results of edgeR analysis from an Excel file, performs GO and KEGG GSEA and plots the results as horizontal barplots, sorted by p-value, as they come out of the enrichment analysis.
 
-- `Figure_heatmap.Rmd` - make heatmap for selected genes. Uses `TMP.xlsx` produced by `Analysis.Rmd` and a custom signature of gene names
+- `Figure_heatmap.Rmd` - make heatmap for selected genes. Uses `TMP.xlsx` produced by `Analysis*.Rmd` and a custom signature of gene names
 
-- `Pathview.Rmd` - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis.Rmd`
+### Supplemental scripts
+
+- `calcTPM.R` - a function to calculate TPMs from gene counts
 
 - `utils.R` - helper functions
 

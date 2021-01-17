@@ -1,0 +1,137 @@
+---
+title: 'EnrichR functional enrichment analysis'
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is')
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE, width=400)
+```
+
+```{r}
+# BiocManager::install("enrichR")
+library(enrichR)
+library(HGNChelper)
+library(readxl)
+library(writexl)
+```
+
+```{r settings}
+# P-value cutoff settings
+p_adj_cutoff   <- 0.05 # FDR cutoff for genes
+enrichr_cutoff <- 0.3  # FDR cutoff for enrichments
+min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
+max_kegg_genes <- 3000 # Maximum number of genes to run enrichment analysis on
+delay <- 60 # Delay, in seconds, after eac
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
+
+if (human_analysis) {
+  KEGG <- "KEGG_2019_Human"
+  WikiPathways <- "WikiPathways_2019_Human"
+}
+if (mouse_analysis) {
+  KEGG <- "KEGG_2019_Mouse"
+  WikiPathways <- "WikiPathways_2019_Mouse"
+}
+
+# List of all libraries, listed at http://amp.pharm.mssm.edu/Enrichr/#stats
+# dbs$libraryName
+# Manually selected libraries
+DBs <- c(KEGG, "GO_Biological_Process_2018", "GO_Molecular_Function_2018", "GO_Cellular_Component_2018", WikiPathways, "BioCarta_2016", "Reactome_2016", "Panther_2016", "TRANSFAC_and_JASPAR_PWMs", "Genome_Browser_PWMs", "ChEA_2016", "ENCODE_TF_ChIP-seq_2015", "ENCODE_Histone_Modifications_2015", "Epigenomics_Roadmap_HM_ChIP-seq")
+
+# File names
+data_dir       <- "/Users/mdozmorov/Documents/Work/GitHub/RNA-seq/" # Working directory
+# Files for input and output
+fileNameIn  <- file.path(data_dir, "data/SW1271_gene_changes.xlsx")
+# File to output the results
+fileNameOut <- file.path(data_dir, paste0("results/enrichR_", basename(fileNameIn)))
+```
+
+```{r loadData}
+# Load differentially expressed genes from edgeR analysis
+# Should have "symbol" column with gene symbols
+res <- read_xlsx(fileNameIn) # Specify sheet, if needed
+res <- res[ res$padj < p_adj_cutoff, ] # Filter by FDR cutoff
+res.nrow <- nrow(res)
+# Correct gene names
+res$symbol <- checkGeneSymbols(res$symbol)$Suggested.Symbol
+# Remove NAs
+res <- res[!is.na(res$symbol), ]
+# Filter by max_kegg_genes
+res <- res[1:min(nrow(res), max_kegg_genes), ]
+# Separate up- and downregulated genes
+up.genes <- res$symbol[res$log2FoldChange > 0] %>% unique()
+dn.genes <- res$symbol[res$log2FoldChange < 0] %>% unique()
+```
+
+Out of the total of `r res.nrow` genes, top `r max_kegg_genes` were analyzed for enrichment. 
+
+- The number of upregulated genes: `r length(up.genes)`
+- The number of downregulated genes: `r length(dn.genes)`
+
+The results are in the  `r basename(fileNameOut)` file.
+
+Only enrichment results at `r enrichr_cutoff` FDR significance level are shown.
+
+The sheets are named as "ALL/UP/DN_Database".
+
+- "ALL" suffix - both up- and downregulated genes were analyzed
+- "UP" suffix - only upregulated genes were analyzed
+- "DN" suffix - only downregulated genes were analyzed
+
+Selected databases from http://amp.pharm.mssm.edu/Enrichr/#stats include `r DBs`
+
+**Legend:** "Term" - name of functional annotation, "Overlap" - number of differentially expressed genes out of total for a given annotation,  "P.value" - unadjusted enrichment p-value,  "Adjusted.P.value" - FDR-adjusted p-value (default sorting), "Odds.Ratio" - odds ratio of enrichment, "Combined.Score" - combined significance score (may be used for sorting), "Genes" - comma-separated differentially expressed genes enriched in a corresponding functional category. 
+
+```{r}
+# Function returning either enrichR results, or "Nothing significant"
+enricR_full <- function(res.genes, DB = "KEGG_2019_Human", enrichr_cutoff = enrichr_cutoff) {
+  res.kegg <- enrichr(unique(c(up.genes, dn.genes)), databases = DB) # KEGG results only
+  # If significant results are present, save them
+  if(nrow(res.kegg[[DB]]) > 0 & sum(res.kegg[[DB]]$Adjusted.P.value < enrichr_cutoff) > 0) {
+    res.kegg <- as.data.frame(res.kegg[[DB]])
+    res.kegg <- res.kegg[res.kegg$Adjusted.P.value < enrichr_cutoff, , drop = FALSE]
+  }
+  # Finally, if something is significant, save that
+  if ((class(res.kegg) == "data.frame")) {
+    res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix
+  } else {
+    res.kegg <- data.frame(Results = "Nothing significant")
+  }
+  return(res.kegg)
+}
+```
+
+```{r}
+x <- list()
+for (DB in DBs) {
+  print(DB)
+  # All enrichments
+  res.all <- enricR_full(res.genes = unique(c(up.genes, dn.genes)), DB = DB, enrichr_cutoff = enrichr_cutoff)
+  Sys.sleep(delay)
+  # Upregulated enrichments
+  res.up <- enricR_full(res.genes = up.genes, DB = DB, enrichr_cutoff = enrichr_cutoff)
+  Sys.sleep(delay)
+  # Downregulated enrichments
+  res.dn <- enricR_full(res.genes = dn.genes, DB = DB, enrichr_cutoff = enrichr_cutoff)
+  Sys.sleep(delay)
+  # Collect results
+  x <- c(x, list(res.all), list(res.up), list(res.dn))
+  names(x)[ (length(x) - 3 + 1):length(x) ] <- c(paste0("ALL_", DB), paste0("UP_", DB), paste0("DN_", DB))
+}
+write_xlsx(x, path = fileNameOut)
+```
+
+
