@@ -10,6 +10,8 @@
 
 - `enrichR_plot.Rmd` - barplot of selected enrichment results, similar to [Example](examples/Figure_clusterProfiler.pdf). WIP
 
+- `GSEA.Rmd` - GSEA analysis using MSigDb.
+
 - `Pathview.Rmd` - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`. [Example](examples/pathview_example.pdf)
 
 ### Outdated scripts

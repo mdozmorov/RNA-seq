@@ -1,0 +1,273 @@
+---
+title: "GSEA Analysis"
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: cerulean
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is', fig.width = 10, fig.height = 6) #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+```{r libraries}
+library(readxl)
+library(writexl)
+library(enrichR) # install.packages("enrichR")
+library(annotables) # devtools::install_github("stephenturner/annotables") Annotations of Ensembl IDs
+library(clusterProfiler)
+library(DOSE)
+library(ggplot2)
+```
+
+```{r settings}
+# Data
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Ginder/2020-07.RNA-seq/" # Working directory
+fileNameIn1   <- file.path(data_dir, "results/DEGs_for_GSEA.xlsx") # File to save all results of differential expression analysis
+degs_sheet     <- "3.protein-coding" # Which worksheet contains differentially expressed genes
+fileNameOut1 <- file.path(data_dir, "results/DEGs_GSEA_3.xlsx")
+
+# Which pathway enrichment analysis to run
+run_gsea <- TRUE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
+min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
+max_kegg_genes <- 3000 # Maximum number of genes to run enrichment analysis on
+up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
+FDR_cutoff     <- 0.3 # FDR cutoff for DEGs
+p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
+nperm          <- 1000 # Number of permutations (for GSEA)
+```
+
+```{r}
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
+
+# Prepate gene annotations, remove non-canonical chromosome names
+if (human_analysis) {
+  library(org.Hs.eg.db)
+  OrgDb = "org.Hs.eg.db"; species = "hsa"
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  KEGG <- "KEGG_2019_Human"
+  # Gene length for TPM calculations
+  gene_length <- data.frame(Geneid = grch38$ensgene, Length = grch38$end - grch38$start)
+}
+if (mouse_analysis) {
+  library(org.Mm.eg.db)
+  OrgDb = "org.Mm.eg.db"; species = "mmu"
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  KEGG <- "KEGG_2019_Mouse"
+  # Gene length for TPM calculations
+  gene_length <- data.frame(Geneid = grcm38$ensgene, Length = grcm38$end - grcm38$start)
+}
+# All genes for background
+all.symbol <- unique(gene_annotations$symbol) 
+```
+
+# Load data
+
+```{r}
+mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
+res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.adj = mtx$FDR)
+```
+
+# Overview
+
+- All up- and downregulated genes are analyzed. It is possible to run the analysis only on up- or downregulated genes.
+- All enrichment results are filtered at the adjusted p-value cutoff `r p_adj_cutoff`. This is the lowest minimum when one can say something is significant.
+<!--
+- Two types of Enrichment analyses were run:
+    - "Enrich" - enrichment _without considering_ log Fold Change
+    - "GSEA" - enrichment _considering_ log Fold Change
+-->
+- The following signatures were used:
+    - "KEGG" - KEGG pathways
+    - MSigDB collections, see  https://www.gsea-msigdb.org/gsea/msigdb/index.jsp. 
+        - "H"	hallmark gene sets  are coherently expressed signatures derived by aggregating many MSigDB gene sets to represent well-defined biological states or processes.
+        - "C1"	positional gene sets  for each human chromosome and cytogenetic band.
+        - "C2"	curated gene sets  from online pathway databases, publications in PubMed, and knowledge of domain experts.
+        - "C3"	regulatory target gene sets  based on gene target predictions for microRNA seed sequences and predicted transcription factor binding sites.
+        - "C4"	computational gene sets  defined by mining large collections of cancer-oriented microarray data.
+        - "C5"	GO gene sets  consist of genes annotated by the same GO terms.
+        - "C6"	oncogenic gene sets  defined directly from microarray gene expression data from cancer gene perturbations.
+        - "C7"	immunologic gene sets  defined directly from microarray gene expression data from immunologic studies.
+- Sheets in the Excel results file are named by the "type of analysis"."signature", e.g., "Enrich.KEGG", "GSEA.C7"
+    - Signatures in question can be googled
+
+<!--# KEGG pathway 
+
+**Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.-->
+
+```{r eval=FALSE}
+  websiteLive <- TRUE # Check if EnrichR is up
+  dbs <- listEnrichrDbs()
+  if (is.null(dbs)) websiteLive <- FALSE
+  if(websiteLive) {
+    # Subset the number of DEGs for KEGG analysis to the maximum
+    if (nrow(res) > max_kegg_genes) {
+      degs_subset <- res[1:max_kegg_genes, ]
+    } else {
+      degs_subset <- res
+    }
+    # Get list of up- and downregulated genes
+    up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
+    dn.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC < 0 ]))
+    # Run KEGG
+    if (up_dn_separate) {
+      # Analyze up- and downregulated genes separately
+      print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
+      # res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+      res.kegg    <- NULL # Initially, empty value
+      res.kegg.up <- enrichr(up.genes, databases = KEGG)
+      res.kegg.dn <- enrichr(dn.genes, databases = KEGG)
+      # If significant results are present, save them
+      if(nrow(res.kegg.up[[KEGG]]) > 0 & sum(res.kegg.up[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+        res.kegg.up <- as.data.frame(res.kegg.up[[KEGG]])
+        res.kegg.up <- res.kegg.up[res.kegg.up$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg.up <- res.kegg.up %>% mutate(Direction = "UP")
+        res.kegg    <- rbind(res.kegg, res.kegg.up)
+      }
+      if(nrow(res.kegg.dn[[KEGG]]) > 0 & sum(res.kegg.dn[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+        res.kegg.dn <- as.data.frame(res.kegg.dn[[KEGG]])
+        res.kegg.dn <- res.kegg.dn[res.kegg.dn$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+        res.kegg.dn <- res.kegg.dn %>% mutate(Direction = "DN")
+        res.kegg    <- rbind(res.kegg, res.kegg.dn)
+      }
+    } else {
+      # Analyze up- and downregulated genes together
+      print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
+      # res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
+      res.kegg <- enrichr(unique(c(up.genes, dn.genes)), databases = KEGG) # KEGG results only
+      # If significant results are present, save them
+      if(nrow(res.kegg[[KEGG]]) > 0 & sum(res.kegg[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+        res.kegg <- as.data.frame(res.kegg[[KEGG]])
+        res.kegg <- res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+      }
+    }
+  }
+```
+
+# GSEA analysis 
+
+```{r}
+  # All DEGs for GSEA
+  res.all <- res
+  # Convert symbols to entrezids
+  eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+  # Attach converted entrezids
+  res.all <- left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+  res.all <- res.all[ !is.na(res.all$ENTREZID), ]
+  # List of t-statistics
+  geneList <- res.all$logFC
+  # Make it named
+  names(geneList) <- res.all$ENTREZID
+  # And decreasing sorted
+  geneList <- sort(geneList, decreasing = TRUE)
+  
+  # Top DEGs for enrichr
+  res.all <- res[res$p.adj < FDR_cutoff, ]
+  # Convert symbols to entrezids
+  eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+  # Attach converted entrezids
+  res.all <- left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+  res.all <- res.all[ !is.na(res.all$ENTREZID), ]
+  # List of t-statistics
+  geneList_significant <- res.all$logFC
+  # Make it named
+  names(geneList_significant) <- res.all$ENTREZID
+  # And decreasing sorted
+  geneList_significant <- sort(geneList_significant, decreasing = TRUE)
+
+```
+
+```{r eval=FALSE}
+  ## GSEA using clusterProfiler
+  # Actual GSEA
+  set.seed(1)
+  ego3 <- gseKEGG(geneList     = geneList,
+                  organism     = species,
+                  # nPerm        = nperm,
+                  minGSSize    = 10,
+                  pvalueCutoff = 1,
+                  verbose      = FALSE)
+  # Get summary
+  ego3 <- setReadable(ego3, OrgDb = OrgDb, keyType = "ENTREZID")
+  res.kegg.gsea <- as.data.frame(ego3)
+  # Prepare for table output
+  res.kegg.gsea <- res.kegg.gsea[, c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")]
+  res.kegg.gsea <- res.kegg.gsea[order(abs(res.kegg.gsea$NES), decreasing = TRUE), ]
+  res.kegg.gsea <- res.kegg.gsea[res.kegg.gsea$p.adjust < p_adj_cutoff, ]
+  res.kegg.gsea$NES       <- round(res.kegg.gsea$NES, digits = 2)
+  res.kegg.gsea$pvalue    <- formatC(res.kegg.gsea$pvalue, format = "e", digits = 2)
+  res.kegg.gsea$p.adjust  <- formatC(res.kegg.gsea$p.adjust, format = "e", digits = 2)
+  rownames(res.kegg.gsea) <- NULL
+```
+
+# MSigDB analysis
+
+```{r}
+library(msigdbr)
+m_df <- msigdbr(species = "Homo sapiens")
+table(m_df$gs_cat)
+
+m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
+res.msigdf.all <- list()
+# m_df_gs_cat="H"
+for (gs_cat in m_df_gs_cat) {
+  m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% dplyr::select(gs_name, entrez_gene)
+  em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
+  res.msigdf.em <-em@result
+  em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
+  res.msigdf.em2 <-em2@result
+  res.msigdf.all <- c(res.msigdf.all, list(res.msigdf.em), list(res.msigdf.em2))
+  names(res.msigdf.all)[length(res.msigdf.all) - 1] <- paste0("Enrich.", gs_cat)
+  names(res.msigdf.all)[length(res.msigdf.all) - 0] <- paste0("GSEA.", gs_cat)
+}
+```
+
+# Save the data
+
+```{r}
+# x <- list(res.kegg, res.kegg.gsea)
+# names(x) <- c("Enrich.KEGG", "GSEA.KEGG")
+x <- c(res.msigdf.all)
+write_xlsx(x, path = fileNameOut1)
+```
+
+# Custom enrichment
+
+More precise p-values cannot be extracted.
+
+```{r eval=FALSE}
+DREAM_signature <- read_xlsx(fileNameIn1, sheet = 3, col_names = FALSE)
+DREAM_signature <- as.character(DREAM_signature$...1)
+# Convert symbols to entrezids
+eid <- bitr(DREAM_signature, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+TERM2GENE <- data.frame(ID = "DREAM", Gene = eid$ENTREZID)
+
+em2 <- GSEA(geneList = geneList, TERM2GENE = TERM2GENE, pvalueCutoff = 1, maxGSSize = 8000)
+kable(em2[, 1:10])
+print(paste0("p-value:", em2@result$pvalue))
+print(paste0("p-adjusted:", em2@result$p.adjust))
+```
+
+```{r fig.width = 6, fig.height = 3, eval=FALSE}
+# jpeg("Figure_GSEA.jpg", width = 8, height = 12, dpi = 100)
+gseaplot(em2, geneSetID = 1, by = "runningScore")
+ggsave(filename = "Figure_GSEA.jpg", width = 6, height = 3, units = "in", dpi = 300)
+# dev.off()
+#gseaplot(em2, geneSetID = 1, by = "preranked")
+```
+
