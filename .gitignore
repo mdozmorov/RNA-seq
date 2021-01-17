@@ -2,3 +2,13 @@
 .Rhistory
 .RData
 .Ruserdata
+misc/CaSpER*
+misc/RNAseq
+misc/*.pdf
+misc/README.md
+img
+cache
+data
+results
+WCCTR_RNASeq_Pipeline
+
