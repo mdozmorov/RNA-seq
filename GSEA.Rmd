@@ -33,10 +33,10 @@ library(ggplot2)
 
 ```{r settings}
 # Data
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Ginder/2020-07.RNA-seq/" # Working directory
-fileNameIn1   <- file.path(data_dir, "results/DEGs_for_GSEA.xlsx") # File to save all results of differential expression analysis
-degs_sheet     <- "3.protein-coding" # Which worksheet contains differentially expressed genes
-fileNameOut1 <- file.path(data_dir, "results/DEGs_GSEA_3.xlsx")
+data_dir       <- "/Users/mdozmorov/Documents/Work/VCU_work/Tony/RNA-seq/" # Working directory
+fileNameIn1   <- file.path(data_dir, "data/KELLYBvsKELLYA.xlsx") # File to save all results of differential expression analysis
+degs_sheet     <- "KELLYBvsKELLYA" # Which worksheet contains differentially expressed genes
+fileNameOut1 <- file.path(data_dir, "results/GSEA_KELLYBvsKELLYA.xlsx")
 
 # Which pathway enrichment analysis to run
 run_gsea <- TRUE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
@@ -80,37 +80,36 @@ all.symbol <- unique(gene_annotations$symbol)
 
 ```{r}
 mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
-res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.adj = mtx$FDR)
+res <- data.frame(symbol = mtx$gene_name, logFC = mtx$log2FoldChange, p.adj = mtx$padj)
+res <- res[ order(res$p.adj, decreasing = FALSE), ]
 ```
 
 # Overview
 
 - All up- and downregulated genes are analyzed. It is possible to run the analysis only on up- or downregulated genes.
 - All enrichment results are filtered at the adjusted p-value cutoff `r p_adj_cutoff`. This is the lowest minimum when one can say something is significant.
-<!--
+
 - Two types of Enrichment analyses were run:
-    - "Enrich" - enrichment _without considering_ log Fold Change
-    - "GSEA" - enrichment _considering_ log Fold Change
--->
+    - **Enrich** - enrichment _without considering_ DEG order (Most frequently used, as in IPA)
+    - **GSEA** - enrichment _considering_ largest-to-smallest order of DEGs ()
+
 - The following signatures were used:
-    - "KEGG" - KEGG pathways
+    - **KEGG** - KEGG pathways
     - MSigDB collections, see  https://www.gsea-msigdb.org/gsea/msigdb/index.jsp. 
-        - "H"	hallmark gene sets  are coherently expressed signatures derived by aggregating many MSigDB gene sets to represent well-defined biological states or processes.
-        - "C1"	positional gene sets  for each human chromosome and cytogenetic band.
-        - "C2"	curated gene sets  from online pathway databases, publications in PubMed, and knowledge of domain experts.
-        - "C3"	regulatory target gene sets  based on gene target predictions for microRNA seed sequences and predicted transcription factor binding sites.
-        - "C4"	computational gene sets  defined by mining large collections of cancer-oriented microarray data.
-        - "C5"	GO gene sets  consist of genes annotated by the same GO terms.
-        - "C6"	oncogenic gene sets  defined directly from microarray gene expression data from cancer gene perturbations.
-        - "C7"	immunologic gene sets  defined directly from microarray gene expression data from immunologic studies.
-- Sheets in the Excel results file are named by the "type of analysis"."signature", e.g., "Enrich.KEGG", "GSEA.C7"
+        - **H**	hallmark gene sets  are coherently expressed signatures derived by aggregating many MSigDB gene sets to represent well-defined biological states or processes.
+        - **C1**	positional gene sets  for each human chromosome and cytogenetic band.
+        - **C2**	curated gene sets  from online pathway databases, publications in PubMed, and knowledge of domain experts.
+        - **C3**	regulatory target gene sets  based on gene target predictions for microRNA seed sequences and predicted transcription factor binding sites.
+        - **C4**	computational gene sets  defined by mining large collections of cancer-oriented microarray data.
+        - **C5**	GO gene sets  consist of genes annotated by the same GO terms.
+        - **C6**	oncogenic gene sets  defined directly from microarray gene expression data from cancer gene perturbations.
+        - **C7**	immunologic gene sets  defined directly from microarray gene expression data from immunologic studies.
+- Sheets in the Excel results file are named by the **type of analysis**.**signature**, e.g., **Enrich.KEGG**, **GSEA.C7**
     - Signatures in question can be googled
 
-<!--# KEGG pathway 
+**KEGG pathway Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.
 
-**Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.-->
-
-```{r eval=FALSE}
+```{r}
   websiteLive <- TRUE # Check if EnrichR is up
   dbs <- listEnrichrDbs()
   if (is.null(dbs)) websiteLive <- FALSE
@@ -192,7 +191,7 @@ res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.adj = mtx$FDR)
 
 ```
 
-```{r eval=FALSE}
+```{r}
   ## GSEA using clusterProfiler
   # Actual GSEA
   set.seed(1)
@@ -240,17 +239,17 @@ for (gs_cat in m_df_gs_cat) {
 # Save the data
 
 ```{r}
-# x <- list(res.kegg, res.kegg.gsea)
-# names(x) <- c("Enrich.KEGG", "GSEA.KEGG")
-x <- c(res.msigdf.all)
+x <- c(list(res.kegg), list(res.kegg.gsea), res.msigdf.all)
+names(x)[1:2] <- c("Enrich.KEGG", "GSEA.KEGG")
 write_xlsx(x, path = fileNameOut1)
 ```
 
-# Custom enrichment
-
-More precise p-values cannot be extracted.
 
 ```{r eval=FALSE}
+# Custom enrichment
+
+# More precise p-values cannot be extracted.
+
 DREAM_signature <- read_xlsx(fileNameIn1, sheet = 3, col_names = FALSE)
 DREAM_signature <- as.character(DREAM_signature$...1)
 # Convert symbols to entrezids

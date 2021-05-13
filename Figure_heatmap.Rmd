@@ -21,18 +21,28 @@ library(dplyr)
 options(stringsAsFactors = FALSE)
 ```
 
+# Libraries
+
 ```{r libraries}
 library(readr)
 library(pheatmap)
 library(openxlsx)
+library(readxl)
+library(EnhancedVolcano)
+library(reshape2)
+library(ggplot2)
 ```
+
+# Settings 
 
 ```{r settings}
 # Data
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" # Working directory
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunLee_Novogene/" # Working directory
 fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
 fileName_signature <- "data/signature.txt" # Text file with gene name per line signature
-
+fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of 
+fileName_rna1   <- file.path(data_dir, "results/DEGs_full.xlsx") # File to save all results of 
+nplot          <- 50 # How many genes to plot on a heatmap
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
 col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 # col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
@@ -40,13 +50,18 @@ col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 # col3 <- colorRamps::green2red(n = 20)
 ```
 
+# Load data
 
 ```{r}
 # TPM data
-mtx <- read.xlsx(fileName_tpm) 
+mtx_full <- read_xlsx(fileName_tpm) %>% as.data.frame()
+rownames(mtx_full) <- mtx_full$ensgene
+mtx <- mtx_full[, c("Empty_1","Empty_2","Empty_3","ERAP2N_1","ERAP2N_2","ERAP2N_3")]
 # Signature data
-signature <- readLines(fileName_signature)
-setdiff(signature, mtx$symbol) # Gene names not found in TPM file
+# signature <- readLines(fileName_signature)
+# setdiff(signature, mtx$symbol) # Gene names not found in TPM file
+res <- read_xlsx(fileName_rna)
+res_subset <- res[1:nplot, c("genes", "symbol")]
 ```
 
 ```{r}
@@ -54,26 +69,100 @@ setdiff(signature, mtx$symbol) # Gene names not found in TPM file
 sample_annotation <- read_csv(paste0(data_dir, "data/sample_annotation.csv"))
 sample_annotation$Sample <- make.names(sample_annotation$Sample)
 sample_annotation$Sample <- sub(".txt.gz", "", sample_annotation$Sample)
-all.equal(sample_annotation$Sample, colnames(mtx)[grepl("R1_001", colnames(mtx))])
+all.equal(sample_annotation$Sample, colnames(mtx))
 ```
 
 ```{r}
 # Subset the data, adjust manually
-index <- sample_annotation$Group == "WT.IgG" | sample_annotation$Group == "KO.PD1.Ab"
+index <- sample_annotation$Group == "Empty" | sample_annotation$Group == "ERAPN2"
 sample_annotation_subset <- sample_annotation[index, ]
-mtx_subset <- mtx[mtx$symbol %in% signature, colnames(mtx) %in% sample_annotation_subset$Sample]
-rownames(mtx_subset) <- mtx$symbol[mtx$symbol %in% signature]
+mtx_subset <- mtx[rownames(mtx) %in% res_subset$genes, colnames(mtx) %in% sample_annotation_subset$Sample]
+rownames(mtx_subset) <- res_subset$symbol[match(rownames(mtx_subset), res_subset$genes)]
 all.equal(sample_annotation_subset$Sample, colnames(mtx_subset))
 ```
 
+## Heatmap
 
-```{r}
+```{r fig.height=10, fig.width=5}
 # Make group annotation
 annotation_col <- data.frame(Group = sample_annotation_subset$Group)
 rownames(annotation_col) <- sample_annotation_subset$Sample
 # Plotting
-pdf("Figure_heatmap.pdf", width = 3, height = 3.5)
+# dev.off()
+# pdf("results/Figure_heatmap.pdf", width = 4, height = 7)
 pheatmap(mtx_subset, scale = "row", cluster_cols = FALSE, cluster_rows = TRUE, color = col3, treeheight_row = 0, treeheight_col = 0, show_rownames = TRUE, show_colnames = FALSE, annotation_col = annotation_col)
-dev.off()
+# dev.off()
+```
+
+## EnhancedVolcano
+
+```{r fig.height=8, fig.width=7}
+res <- read_xlsx(fileName_rna1)
+rownames(res) <- res$symbol
+# dev.off()
+# pdf("results/Figure_volcano.pdf", width = 7, height = 7)
+EnhancedVolcano(res,
+    lab = rownames(res),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.018,
+    ylim = c(0, 7.5),
+    labSize = 3)
+# dev.off()
+```
+
+## Boxplots of selected genes
+
+```{r}
+# http://www.sthda.com/english/wiki/ggplot2-error-bars-quick-start-guide-r-software-and-data-visualization
+#+++++++++++++++++++++++++
+# Function to calculate the mean and the standard deviation
+  # for each group
+#+++++++++++++++++++++++++
+# data : a data frame
+# varname : the name of a column containing the variable
+  #to be summariezed
+# groupnames : vector of column names to be used as
+  # grouping variables
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+```
+
+
+```{r}
+
+selected_genes <- c("CBSL", "CCDC78", "EBI3", "DPP4")
+# selected_genes <- c()
+# selected_genes <- c("ERAP2", "ERAP1")
+
+
+mtx_to_plot <- mtx_full[mtx_full$symbol %in% selected_genes, c("Empty_1","Empty_2","Empty_3","ERAP2N_1","ERAP2N_2","ERAP2N_3")]
+rownames(mtx_to_plot) <- mtx_full$symbol[match(rownames(mtx_to_plot), mtx_full$ensgene)]
+mtx_to_plot <- data.frame(gene = rownames(mtx_to_plot), mtx_to_plot)
+mtx_to_plot <- melt(mtx_to_plot, id = "gene")
+colnames(mtx_to_plot) <- c("Gene", "Condition", "Log2 TPM")
+mtx_to_plot$Condition <- sapply(as.character(mtx_to_plot$Condition), function(x) strsplit(x, "_")[[1]][1])
+
+df2 <- data_summary(mtx_to_plot, varname="Log2 TPM", groupnames=c("Gene", "Condition"))
+# Convert to a factor variable
+df2$Gene=as.factor(df2$Gene)
+df2$Condition=as.factor(df2$Condition)
+head(df2)
+
+ggplot(df2, aes(x=Gene, y=`Log2 TPM`, fill=Condition)) + 
+  geom_bar(stat="identity", color="black", 
+           position=position_dodge()) +
+  geom_errorbar(aes(ymin=`Log2 TPM`-sd, ymax=`Log2 TPM`+sd), width=.2,
+                 position=position_dodge(.9)) +
+  facet_wrap(~ Gene, scales='free')
 ```
 

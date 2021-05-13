@@ -1,20 +1,24 @@
-# RNA-seq analysis pipeline, featureCounts input, edgeR, functional enrichment, visualization
+# RNA-seq analysis pipeline, STAR input, edgeR, functional enrichment, visualization
 
-- `Analysis_STAR.Rmd` - RNA-seq analysis pipeline for `STAR` counts. Prerequisites:
+- [Analysis_STAR.Rmd](Analysis_STAR.Rmd) - RNA-seq analysis pipeline for `STAR` counts. Prerequisites:
     - A path to data folder. This folder should have 3 subfolders:
         - `02_STAR-align` - gzipped count files with `.tab` extension outputted by `STAR` aligner
         - `results` - folder where the results will be stored
         - `data` - Must have `sample_annotation.csv` file, example below
 
-- `enrichR_analysis.Rmd` - Analyze gene lists using [enrichR](https://cran.r-project.org/package=enrichR). Analyze all genes, and up- and downregulated genes separately. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`.
+- [GSEA.Rmd](GSEA.Rmd) - EnrichR (non-directional) and GSEA (directional) analysis using KEGG, GO, MSigDb.
 
-- `enrichR_plot.Rmd` - barplot of selected enrichment results, similar to [Example](examples/Figure_clusterProfiler.pdf). WIP
+- [GSEA_figures.Rmd](GSEA_figures.Rmd) - Visualization of GSEA enrichment results as horizontal barplots.
 
-- `GSEA.Rmd` - GSEA analysis using MSigDb.
+- [Figure_heatmap.Rmd](Figure_heatmap.Rmd) - make heatmap of top 50 differentially expressed genes. Uses `TMP.xlsx` produced by `Analysis*.Rmd`. May use a custom signature of genes. Includes [EnhancedVolcano](https://bioconductor.org/packages/EnhancedVolcano/) and boxplots of selected genes.
 
-- `Pathview.Rmd` - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`. [Example](examples/pathview_example.pdf)
+- [Pathview.Rmd](Pathview.Rmd) - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`. [Example](examples/pathview_example.pdf)
 
-### Outdated scripts
+- [calcTPM.R](calcTPM.R) - a function to calculate TPMs from gene counts
+
+- [utils.R](utils.R) - helper functions
+
+### [misc](misc) - Outdated scripts
 
 - `Analysis_featurecounts.Rmd` - RNA-seq analysis pipeline for `featureCount` counts. Prerequisites:
     - A path to data folder. This folder should have 3 subfolders:
@@ -35,15 +39,11 @@ VLI11_C_S62_L008_R1_001.txt.gz,C
 
 - `Figure_clusterProfiler_asis.Rmd` - Takes the results of edgeR analysis from an Excel file, performs GO and KEGG GSEA and plots the results as horizontal barplots, sorted by p-value, as they come out of the enrichment analysis.
 
-- `Figure_heatmap.Rmd` - make heatmap for selected genes. Uses `TMP.xlsx` produced by `Analysis*.Rmd` and a custom signature of gene names
+- [enrichR_analysis.Rmd](enrichR_analysis.Rmd) - Analyze gene lists using [enrichR](https://cran.r-project.org/package=enrichR). Analyze all genes, and up- and downregulated genes separately. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`.
 
-### Supplemental scripts
+- [enrichR_plot.Rmd](enrichR_plot.Rmd) - barplot of selected enrichment results, similar to [Example](examples/Figure_clusterProfiler.pdf). WIP
 
-- `calcTPM.R` - a function to calculate TPMs from gene counts
-
-- `utils.R` - helper functions
-
-## `scripts` folder
+### [scripts](scripts)
 
 Scripts for running RNA-seq preprocessing steps on a cluster using PBS job submission system. `subread-featurecounts` scripts are in the [dcaf/ngs.rna-seq](https://github.com/mdozmorov/dcaf/tree/master/ngs.rna-seq) repository
 
