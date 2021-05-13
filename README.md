@@ -12,6 +12,8 @@
 
 - [Figure_heatmap.Rmd](Figure_heatmap.Rmd) - make heatmap of top 50 differentially expressed genes. Uses `TMP.xlsx` produced by `Analysis*.Rmd`. May use a custom signature of genes. Includes [EnhancedVolcano](https://bioconductor.org/packages/EnhancedVolcano/) and boxplots of selected genes.
 
+- [oncoEnrichR.Rmd](oncoEnrichR.Rmd) - Cancer-dedicated gene set interpretation using the [oncoEnrichR](https://github.com/sigven/oncoEnrichR) R package
+
 - [Pathview.Rmd](Pathview.Rmd) - visualization of top KEGG pathways. Uses `DEGs.xlsx` produced by `Analysis*.Rmd`. [Example](examples/pathview_example.pdf)
 
 - [calcTPM.R](calcTPM.R) - a function to calculate TPMs from gene counts
