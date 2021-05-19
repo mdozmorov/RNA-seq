@@ -56,7 +56,7 @@ library(annotables) # devtools::install_github("stephenturner/annotables") Annot
 # Settings
 
 ```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Sarkar/Devanand_2020-04/" # Working directory
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Sarkar/2021-04.RNA-seq/" # Working directory
 fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
 fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
 p_val_cutoff   <- 0.05 # Regular p-value cutoff
@@ -71,7 +71,7 @@ max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
 # Which pathway enrichment analysis to run
 run_gsea <- FALSE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
-saveTPM  <- FALSE # Whether or not to save expression counts to TPM
+saveTPM  <- TRUE # Whether or not to save expression counts to TPM
 # Strandedness column selection
 # https://chipster.csc.fi/manual/library-type-summary.html 
 # https://www.biostars.org/p/218995/
@@ -82,8 +82,8 @@ saveTPM  <- FALSE # Whether or not to save expression counts to TPM
 column_star <- 4 # counts for the 2nd read strand aligned with RNA (Option "-s reverse" and "library-type fr-firststrand")
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
 col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
-col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
-col3 <- colorRampPalette(c('green', 'black', 'red'))(20)
+# col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
+# col3 <- colorRampPalette(c('green', 'black', 'red'))(20)
 # col3 <- colorRamps::green2red(n = 20)
 ```
 
@@ -131,7 +131,7 @@ all.symbol <- unique(gene_annotations$symbol)
 
 sample_annotation <- read.csv(paste0(data_dir, "data/sample_annotation.csv"))
 sample_annotation$Sample <- make.names(sample_annotation$Sample)
-sample_annotation$Sample <- sub(".ReadsPerGene.out.tab", "", sample_annotation$Sample) # For STAR files
+sample_annotation$Sample <- sub(".ReadsPerGene.out.tab.gz", "", sample_annotation$Sample) # For STAR files
 sample_annotation <- sample_annotation[order(sample_annotation$Sample), ]
 # Explicitly make factors. Manually adjust for all columns in the sample annotation file
 sample_annotation$Group   <- factor(sample_annotation$Group)
@@ -150,7 +150,7 @@ for (f in files_counts) {
   count_data <- read.table(paste0(data_dir, "02_STAR-align/", f), sep = "\t", header = FALSE)
   # sapply(count_data[5:row(count_data), 2:ncol(count_data)], sum) # Check strandedness, which column has the maximum number, change column_star above
   counts <- cbind(counts, count_data[, column_star]) # Select the right strandedness column
-  count_colnames <- c(count_colnames, sub(".ReadsPerGene.out.tab", "", f))
+  count_colnames <- c(count_colnames, sub(".ReadsPerGene.out.tab.gz", "", f))
 }
 # Filter out low expressed genes
 # Should be more than 100% of non-zero values
@@ -303,11 +303,16 @@ counts <- data.frame(Geneid = Geneid, counts[, index])
 
 ## Analysis 1
 
-"T" vs. "S comparison, so positive logFC correspond to genes UP in "T"
+"AlbMda9" vs. "WT" comparison, so positive logFC correspond to genes UP in "AlbMda9"
 
 ```{r}
+# Define reference and treatment groups
+group_ref <- "WT"
+group_trt <- "AlbMda9"
+# Define analysis ID
+analysis_ID <- paste0("1.", group_trt, "_vs_", group_ref)
 # Subset the data, adjust manually
-index <- sample_annotation$Group == "T" | sample_annotation$Group == "S"
+index <- sample_annotation$Group == group_trt | sample_annotation$Group == group_ref
 # Or, use all the data
 # index <- sample_annotation$Sample == sample_annotation$Sample
 
@@ -320,7 +325,7 @@ all.equal(sample_annotation_subset$Sample, colnames(counts_subset[, 2:ncol(count
 ```{r}
 # Adjust manually
 Group <- factor(sample_annotation_subset$Group)
-Group <- relevel(Group, ref = "S")
+Group <- relevel(Group, ref = group_ref)
 Group
 design <- model.matrix(~Group, data = Group)
 ```
@@ -341,7 +346,7 @@ fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
 lrt <- glmLRT(fit, coef = 2)
 
-res.full <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = "Analysis_1", print_to_file = FALSE)
+res.full <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = analysis_ID, print_to_file = FALSE)
 
 # res <- p.vals(object = lrt, p_adj_cutoff = 0.1, comparison = "DEGs_1", print_to_file = FALSE)
 # res$logFC <- signif(res$logFC)
@@ -376,7 +381,7 @@ Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium e
 ```{r}
 if (nrow(res) > 0) {
   selected_genes = unique(res$symbol[!is.na(res$symbol)])
-  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c("T", "S"))
+  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c(group_trt, group_ref))
 }
 ```
 
@@ -384,7 +389,7 @@ if (nrow(res) > 0) {
 
 ```{r fig.height=12}
 if (nrow(res) > 0)
-  genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = nplot, comparison = "Analysis_1", clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+  genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = nplot, comparison = analysis_ID, clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
 ```
 
 ### KEGG pathway GSEA analysis 
@@ -509,14 +514,21 @@ if (class(res.kegg) == "data.frame") {
 }
 ```
 
+# Save data
+
+```{r}
+x <- c(x1)
+write_xlsx(x, fileName_rna)
+```
+
 ## Selected pathway
 
 Red/Green - up/downregulated genes, respectively. Gray - marginal fold change, yet significant. White - gene is not differentially expressed
 
 ```{r eval=FALSE}
 library(pathview)
-library(openxlsx)
-degs <- read.xlsx(fileName_rna, sheet = 1)
+library(readxl)
+degs <- read_xlsx(fileName_rna, sheet = 1)
 # Convert to EntrezID
 degs.eg <-clusterProfiler::bitr(degs$genes, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = OrgDb)
 degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
@@ -527,7 +539,7 @@ colnames(degs) <- c("ENTREZID", "logFC")
 degs.genes <- degs$logFC
 names(degs.genes) <- degs$ENTREZID
 # Adjust as needed
-pv.out <- pathview(gene.data = degs.genes, pathway.id = "04658", species = species, gene.idtype = "ENTREZ", gene.annotpkg = OrgDb, out.suffix = "Analysis_1")
+pv.out <- pathview(gene.data = degs.genes, pathway.id = "03030", species = species, gene.idtype = "ENTREZ", gene.annotpkg = OrgDb, out.suffix = analysis_ID)
 ```
 
 ```{r eval=FALSE, echo=FALSE, out.height='300px'}
@@ -537,7 +549,7 @@ knitr::include_graphics('mmu04658.Analysis_1.png')
 ## Expression barplots of selected genes
 
 ```{r eval = FALSE, fig.height=3, fig.width=5}
-selected_genes <- c("Sphk1", "Sphk2")
+selected_genes <- c("Pcna", "Mcm2")
 # Gen Ensembl IDs
 selected_gene_annotations <- gene_annotations[ gene_annotations$symbol %in% selected_genes, ]
 
@@ -547,7 +559,7 @@ selected_genes_expr <- selected_genes_expr[match(selected_gene_annotations$ensge
 # Replace row names by gene symbols
 rownames(selected_genes_expr) <- selected_gene_annotations$symbol
 # Reassign columns to groups
-colnames(selected_genes_expr) <- ifelse(sample_annotation_subset$Group == "WT", "WT", "KO") %>% as.character()
+colnames(selected_genes_expr) <- ifelse(sample_annotation_subset$Group == group_ref, group_ref, group_trt) %>% as.character()
 
 # Reshape the data
 gdata <- reshape2::melt(selected_genes_expr)
