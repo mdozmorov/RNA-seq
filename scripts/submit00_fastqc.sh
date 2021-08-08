@@ -18,9 +18,10 @@ DIROUT=00_fastqc-raw
 
 mkdir -p $DIROUT
 
-for file in `find $DIRIN -type f -name "*.gz" | sort`; do 
-	fastqc -t 12 -o $DIROUT --noextract $file; 
-done
+files=$(find $DIRIN -type f -name "*.gz" | sort)
+
+fastqc -t 12 -o $DIROUT --noextract $files
+
 
 # Extract tab-separated FASTQC summary
 # python fastqc-summary -s $DIROUT > $DIROUT".txt"
