@@ -33,10 +33,10 @@ library(ggplot2)
 
 ```{r settings}
 # Data
-data_dir       <- "/Users/mdozmorov/Documents/Work/VCU_work/Tony/RNA-seq/" # Working directory
-fileNameIn1   <- file.path(data_dir, "data/KELLYBvsKELLYA.xlsx") # File to save all results of differential expression analysis
-degs_sheet     <- "KELLYBvsKELLYA" # Which worksheet contains differentially expressed genes
-fileNameOut1 <- file.path(data_dir, "results/GSEA_KELLYBvsKELLYA.xlsx")
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunLee_Novogene/" # Working directory
+fileNameIn1   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
+degs_sheet     <- "1.protein-coding" # Which worksheet contains differentially expressed genes
+fileNameOut1 <- file.path(data_dir, "results/GSEA_DEGs.xlsx")
 
 # Which pathway enrichment analysis to run
 run_gsea <- TRUE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
@@ -80,7 +80,7 @@ all.symbol <- unique(gene_annotations$symbol)
 
 ```{r}
 mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
-res <- data.frame(symbol = mtx$gene_name, logFC = mtx$log2FoldChange, p.adj = mtx$padj)
+res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.adj = mtx$FDR)
 res <- res[ order(res$p.adj, decreasing = FALSE), ]
 ```
 
@@ -217,19 +217,35 @@ res <- res[ order(res$p.adj, decreasing = FALSE), ]
 # MSigDB analysis
 
 ```{r}
-library(msigdbr)
-m_df <- msigdbr(species = "Homo sapiens")
-table(m_df$gs_cat)
+# Convert Entrez IDs back to symbols
+entrez_to_symbols <- function(x = res.msigdf.em$geneID) {
+  sapply(x, function(xx) {
+    xx_split <- strsplit(xx, "/")[[1]]
+    # Convert entrezids to symbols
+    eid <- bitr(xx_split, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb)
+    # combine back
+    paste(sort(eid$SYMBOL), collapse = "/")
+  })
+}
 
-m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
+library(msigdbr)
+# m_df <- msigdbr(species = "Homo sapiens")
+# table(m_df$gs_cat)
+# 
+# m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
+m_df_gs_cat <- c("C2", "C5", "H")
 res.msigdf.all <- list()
-# m_df_gs_cat="H"
+# gs_cat="H"
 for (gs_cat in m_df_gs_cat) {
   m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% dplyr::select(gs_name, entrez_gene)
   em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
   res.msigdf.em <-em@result
+  res.msigdf.em$geneID <- entrez_to_symbols(x = res.msigdf.em$geneID)
+  
   em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
   res.msigdf.em2 <-em2@result
+  res.msigdf.em2$core_enrichment <- entrez_to_symbols(x = res.msigdf.em2$core_enrichment)
+  
   res.msigdf.all <- c(res.msigdf.all, list(res.msigdf.em), list(res.msigdf.em2))
   names(res.msigdf.all)[length(res.msigdf.all) - 1] <- paste0("Enrich.", gs_cat)
   names(res.msigdf.all)[length(res.msigdf.all) - 0] <- paste0("GSEA.", gs_cat)
