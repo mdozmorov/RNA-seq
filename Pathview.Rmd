@@ -24,21 +24,27 @@ options(stringsAsFactors = FALSE)
 ```{r libraries}
 library(pathview)
 library(openxlsx)
-library(KEGG.db)
+# library(KEGG.db)
 ```
 
 ```{r settings}
-# Data
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" # Working directory
-fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
-degs_sheet     <- "Analysis_3" # Which worksheet contains differentially expressed genes
-kegg_sheet     <- "KEGG_3" # Which worksheet contains KEGG pathways
-n_pathways     <- 20 # How many pathways to output
-out.suffix     <- "Analysis_3" # Suffix for pathways
+# Working directory
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" 
+
+# Differentially expressed genes, used to create ranked list
+fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") 
+degs_sheet     <- "Analysis" # Which worksheet contains differentially expressed genes
+
+# List of KEGG pathways
+fileName_kegg  <- file.path(data_dir, "results/GSEA_edgeR_UCD52PR_CR_0.1_0.xlsx")
+kegg_sheet     <- "KEGG" # Which worksheet contains KEGG pathways
+n_pathways     <- 20 # How many pathways from the list of KEGG pathways to output
+
+# Pathview settings
+out.suffix     <- "Analysis" # Suffix for the Pathview output files
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
 human_analysis <- FALSE
 mouse_analysis <- TRUE
-
 # Prepate gene annotations, remove non-canonical chromosome names
 if (human_analysis) {
   library(org.Hs.eg.db)
@@ -59,20 +65,23 @@ degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
 degs <- degs[!is.na(degs$ENTREZID), ]
 degs <- aggregate(x = degs$logFC, by = list(degs$ENTREZID), FUN = mean )
 colnames(degs) <- c("ENTREZID", "logFC")
-# Construct vector of FCs
+# Construct vector of Fold changes
 degs.genes <- degs$logFC
-names(degs.genes) <- degs$ENTREZID
+names(degs.genes) <- degs$ENTREZID # Final vector of ranked EntrezIDs
 
 # KEGG pathways
-kegg <- read.xlsx(fileName_rna, sheet = kegg_sheet) # All significant KEGG pathways
+kegg <- read.xlsx(fileName_kegg, sheet = kegg_sheet) # All significant KEGG pathways
 kegg_names <- kegg$Term[1:min(n_pathways, nrow(kegg))] # Text names
-xx <- as.data.frame(KEGGPATHNAME2ID) # Text to ID mapping
-setdiff(kegg_names, xx$path_name) # Names that did not map
-# Manually map unmapped IDs
-# kegg_unmapped <- c("04658", "04659", "05170") # Manually map unmapped ones
-kegg_unmapped <- NULL # Use if all mapped
-kegg_ids <- c(xx$path_id[xx$path_name %in% kegg_names]) # All KEGG IDs
-kegg_ids <- kegg_ids[match(kegg_names, xx$path_name[xx$path_name %in% kegg_names])] # Match name order
+xx <- paths.hsa  # Text to ID mapping dataset
+setdiff(kegg_names, xx) # Names that did not map
+# Google and Manually map unmapped IDs
+# xx[grep("Alzheimer", xx, ignore.case = TRUE)]
+kegg_unmapped <- c("05225", "05016", "05010") # Manually map unmapped ones
+# kegg_unmapped <- NULL # Use if all mapped
+kegg_ids <- c(names(xx)[xx %in% kegg_names]) # All KEGG IDs
+kegg_ids <- kegg_ids[match(kegg_names, xx[xx %in% kegg_names])] # Match name order
+kegg_ids <- sub("hsa", "", kegg_ids) # Strip off "hsa"
+kegg_ids <- kegg_ids[!is.na(kegg_ids)] # Remove NAs
 kegg_ids <- c(kegg_ids, kegg_unmapped) # Attach unmapped
 
 i <- 1 # Counter
