@@ -262,27 +262,30 @@ write_xlsx(x, path = fileNameOut1)
 
 
 ```{r eval=FALSE}
-# Custom enrichment
+# Create custom signatures for KEGG pathways
+library(KEGGREST)
+gs_cat <- "KEGG"
+gs_selected <- "KEGG_Breast_cancer"
+# Get numerical EntrezIDs
+query <- keggGet("hsa05224")
+query_gene <- query[[1]]$GENE[grepl("^[0-9]", query[[1]]$GENE, perl = TRUE)]
+# The actual custom signature
+m_t2g <- data.frame(gs_name = gs_selected, entrez_gene = query_gene)
 
-# More precise p-values cannot be extracted.
+# Use standard MSigDb sitnatures
+gs_cat <- "C5"
+gs_selected_all <- c("GOCC_CYTOSOLIC_RIBOSOME", "GOBP_DEFENSE_RESPONSE")
 
-DREAM_signature <- read_xlsx(fileNameIn1, sheet = 3, col_names = FALSE)
-DREAM_signature <- as.character(DREAM_signature$...1)
-# Convert symbols to entrezids
-eid <- bitr(DREAM_signature, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
-TERM2GENE <- data.frame(ID = "DREAM", Gene = eid$ENTREZID)
-
-em2 <- GSEA(geneList = geneList, TERM2GENE = TERM2GENE, pvalueCutoff = 1, maxGSSize = 8000)
-kable(em2[, 1:10])
-print(paste0("p-value:", em2@result$pvalue))
-print(paste0("p-adjusted:", em2@result$p.adjust))
-```
-
-```{r fig.width = 6, fig.height = 3, eval=FALSE}
-# jpeg("Figure_GSEA.jpg", width = 8, height = 12, dpi = 100)
-gseaplot(em2, geneSetID = 1, by = "runningScore")
-ggsave(filename = "Figure_GSEA.jpg", width = 6, height = 3, units = "in", dpi = 300)
-# dev.off()
-#gseaplot(em2, geneSetID = 1, by = "preranked")
+# For each signature
+for (gs_selected in gs_selected_all) {
+  print(gs_selected)
+  # gs_selected <- "HALLMARK_DNA_REPAIR"
+  # Do the enrichment analysis
+  m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% dplyr::select(gs_name, entrez_gene) %>% dplyr::filter(gs_name == !!gs_selected)
+  em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
+  # Save the picture
+  gseaplot(em2, geneSetID = 1, by = "runningScore")
+  ggsave(filename = file.path(data_dir, paste0("results/Figure_GSEA_", gs_cat, "_", gs_selected, ".svg")), width = 4, height = 2.6, units = "in")
+}
 ```
 

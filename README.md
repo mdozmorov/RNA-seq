@@ -1,5 +1,7 @@
 # RNA-seq analysis pipeline, STAR input, edgeR, functional enrichment, visualization
 
+- [RNAseq-workflow](https://github.com/twbattaglia/RNAseq-workflow) - A repository for setting up a RNAseq workflow. Detailed instructions and code for each analysis and visualization step.
+
 - [Analysis_STAR.Rmd](Analysis_STAR.Rmd) - RNA-seq analysis pipeline for `STAR` counts. Prerequisites:
     - A path to data folder. This folder should have 3 subfolders:
         - `02_STAR-align` - gzipped count files with `.tab` extension outputted by `STAR` aligner

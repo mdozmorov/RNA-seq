@@ -29,7 +29,7 @@ library(openxlsx)
 
 ```{r settings}
 # Working directory
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2019-08.RNA-seq/" 
+data_dir       <- "/Users/mdozmorov/Documents/Work/GitHub/RNA-seq" 
 
 # Differentially expressed genes, used to create ranked list
 fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") 
@@ -58,7 +58,7 @@ if (mouse_analysis) {
 
 ```{r}
 # Differentially expressed genes
-degs <- read.xlsx(fileName_rna, sheet = degs_sheet)
+degs <- read.xlsx(fileName_rna) # , sheet = degs_sheet
 # Convert to EntrezID
 degs.eg <-clusterProfiler::bitr(degs$genes, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = OrgDb)
 degs <- left_join(degs, degs.eg, by = c("genes" = "ENSEMBL"))
@@ -70,7 +70,7 @@ degs.genes <- degs$logFC
 names(degs.genes) <- degs$ENTREZID # Final vector of ranked EntrezIDs
 
 # KEGG pathways
-kegg <- read.xlsx(fileName_kegg, sheet = kegg_sheet) # All significant KEGG pathways
+kegg <- read.xlsx(fileName_kegg) # All significant KEGG pathways # , sheet = kegg_sheet
 kegg_names <- kegg$Term[1:min(n_pathways, nrow(kegg))] # Text names
 xx <- paths.hsa  # Text to ID mapping dataset
 setdiff(kegg_names, xx) # Names that did not map

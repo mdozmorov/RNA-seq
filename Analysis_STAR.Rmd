@@ -51,6 +51,10 @@ library(pheatmap)
 library(enrichR) # install.packages("enrichR")
 source("utils.R")   # Helper functions
 library(annotables) # devtools::install_github("stephenturner/annotables") Annotations of Ensembl IDs
+library("ggsci")
+library(scales)
+# scales::show_col(pal_lancet("lanonc")(8))
+mycols = pal_lancet("lanonc")(8)
 ```
 
 # Settings
@@ -96,8 +100,14 @@ mouse_analysis <- TRUE
 if (human_analysis) {
   library(org.Hs.eg.db)
   OrgDb = "org.Hs.eg.db"; species = "hsa"
-  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
-  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  selected_annotations <- c("ensgene", "symbol", "biotype", "description")
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), selected_annotations]
+  gene_annotations <- gene_annotations[!duplicated(gene_annotations[, selected_annotations]), selected_annotations]
+  # Remove empty gene symbol records
+  gene_annotations <- gene_annotations[gene_annotations$symbol != "", ]
+  # If a gene has multiple biotypes, take the first one
+  gene_annotations <- gene_annotations %>% group_by(symbol, biotype) %>% slice_head()
+
   KEGG <- "KEGG_2019_Human"
   # Gene length for TPM calculations
   gene_length <- data.frame(Geneid = grch38$ensgene, Length = grch38$end - grch38$start)
