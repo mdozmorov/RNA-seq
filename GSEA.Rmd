@@ -29,6 +29,9 @@ library(annotables) # devtools::install_github("stephenturner/annotables") Annot
 library(clusterProfiler)
 library(DOSE)
 library(ggplot2)
+library(HGNChelper) # for correcting gene names 
+library(tidyverse)
+library(msigdbr)
 ```
 
 ```{r settings}
@@ -58,8 +61,9 @@ if (human_analysis) {
   library(org.Hs.eg.db)
   OrgDb = "org.Hs.eg.db"; species = "hsa"
   gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
-  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "" & gene_annotations$biotype == "protein_coding", ]
   KEGG <- "KEGG_2019_Human"
+  msigdbr_org <- "Homo sapiens"
   # Gene length for TPM calculations
   gene_length <- data.frame(Geneid = grch38$ensgene, Length = grch38$end - grch38$start)
 }
@@ -67,7 +71,7 @@ if (mouse_analysis) {
   library(org.Mm.eg.db)
   OrgDb = "org.Mm.eg.db"; species = "mmu"
   gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
-  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "" & gene_annotations$biotype == "protein_coding", ]
   KEGG <- "KEGG_2019_Mouse"
   # Gene length for TPM calculations
   gene_length <- data.frame(Geneid = grcm38$ensgene, Length = grcm38$end - grcm38$start)
@@ -82,6 +86,10 @@ all.symbol <- unique(gene_annotations$symbol)
 mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
 res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.adj = mtx$FDR)
 res <- res[ order(res$p.adj, decreasing = FALSE), ]
+# fix gene names 
+current_map <- getCurrentHumanMap()
+genes_checked <- checkGeneSymbols(res$symbol, map = current_map)
+res$symbol <- genes_checked$Suggested.Symbol
 ```
 
 # Overview
@@ -109,8 +117,46 @@ res <- res[ order(res$p.adj, decreasing = FALSE), ]
 
 **KEGG pathway Legend:** "ID", "Description" - KEGG pathway ID/description, respectively; "NES" - [normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue", "p.adjust" - raw and FDR-adjusted p-values, respectively; "core_enrichment" - genes enriched in the corresponding pathway.
 
-```{r}
-  websiteLive <- TRUE # Check if EnrichR is up
+# Unranked Hypergeometric Analysis
+
+## KEGG
+
+```{r hyper_kegg}
+kegg_enrich <- function(compartment_genes, p_adj_cutoff = p_adj_cutoff) {
+  # stop if min_kegg is not met 
+  stopifnot(length(compartment_genes) >= min_kegg_genes)
+  res.kegg <- enrichr(unique(compartment_genes), databases = KEGG) # KEGG results only
+  # If significant results are present, save them
+  if (nrow(res.kegg[[KEGG]]) > 0 & sum(res.kegg[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
+    res.kegg <- as.data.frame(res.kegg[[KEGG]])
+    res.kegg <- res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
+    compartment_genes <- res.kegg
+    # reorder the genes alphabetically 
+    compartment_genes <- compartment_genes %>% 
+      # separate the rows by splitting by the delimiter and expanding the rows 
+      separate_rows(Genes, convert = TRUE, sep = ";") %>% 
+      # group the genes by their Term & other columns to keep them 
+      group_by(Term, Overlap, P.value, Adjusted.P.value, Old.P.value, Old.Adjusted.P.value,
+               Odds.Ratio, Combined.Score) %>% 
+      # sort the genes for each term 
+      arrange(Genes) %>% 
+      summarise(Genes = paste(Genes, collapse="/")) %>% 
+      arrange(P.value, Adjusted.P.value)
+  } else {
+    compartment_genes <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 9))
+    colnames(compartment_genes) <- c("Term", "Overlap", "P.value", "Adjusted.P.value", "Old.P.value", "Old.Adjusted.P.value", "Odds.Ratio", "Combined.Score", "Genes")
+    compartment_genes$`P.value` = 0
+    compartment_genes$`Adjusted.P.value` = 0
+    compartment_genes$`Old.P.value` = 0
+    compartment_genes$`Old.Adjusted.P.value` = 0
+    compartment_genes$`Odds.Ratio` = 0
+    compartment_genes$`Combined.Score` = 0
+  }
+  return(compartment_genes)
+}
+
+# run unranked KEGG analysis 
+websiteLive <- TRUE # Check if EnrichR is up
   dbs <- listEnrichrDbs()
   if (is.null(dbs)) websiteLive <- FALSE
   if(websiteLive) {
@@ -123,60 +169,52 @@ res <- res[ order(res$p.adj, decreasing = FALSE), ]
     # Get list of up- and downregulated genes
     up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
     dn.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC < 0 ]))
-    # Run KEGG
+    res.kegg  <- NULL # Initially, empty value
+    # if process up and down regulated genes separately 
     if (up_dn_separate) {
-      # Analyze up- and downregulated genes separately
-      print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ", length(dn.genes), " downregulated genes."))
-      # res.kegg <- save_enrichr(up.genes = up.genes, dn.genes = dn.genes, databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
-      res.kegg    <- NULL # Initially, empty value
-      res.kegg.up <- enrichr(up.genes, databases = KEGG)
-      res.kegg.dn <- enrichr(dn.genes, databases = KEGG)
-      # If significant results are present, save them
-      if(nrow(res.kegg.up[[KEGG]]) > 0 & sum(res.kegg.up[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
-        res.kegg.up <- as.data.frame(res.kegg.up[[KEGG]])
-        res.kegg.up <- res.kegg.up[res.kegg.up$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
-        res.kegg.up <- res.kegg.up %>% mutate(Direction = "UP")
-        res.kegg    <- rbind(res.kegg, res.kegg.up)
-      }
-      if(nrow(res.kegg.dn[[KEGG]]) > 0 & sum(res.kegg.dn[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
-        res.kegg.dn <- as.data.frame(res.kegg.dn[[KEGG]])
-        res.kegg.dn <- res.kegg.dn[res.kegg.dn$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
-        res.kegg.dn <- res.kegg.dn %>% mutate(Direction = "DN")
-        res.kegg    <- rbind(res.kegg, res.kegg.dn)
-      }
+      # run unranked KEGG on up and down regulated genes separately 
+      print(paste0("KEGG pathway run on ", length(up.genes), " upregulated and ",
+                   length(dn.genes), " downregulated genes."))
+      res.kegg.up <- kegg_enrich(up.genes, p_adj_cutoff = p_adj_cutoff) %>%
+        dplyr::mutate(Direction = "UP") # add new Direction column 
+      res.kegg.dn <- kegg_enrich(dn.genes, p_adj_cutoff = p_adj_cutoff) %>%
+        dplyr::mutate(Direction = "DN") # add new Direction column 
+      res.kegg = rbind(res.kegg.up, res.kegg.dn)
     } else {
-      # Analyze up- and downregulated genes together
-      print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))), " genes without distinguishing them by directionality."))
-      # res.kegg <- MDmisc::save_enrichr(up.genes = unique(c(up.genes, dn.genes)), databases = KEGG, fdr.cutoff = p_adj_cutoff, fileName = fileName_rna, wb = wb, sheetName = "KEGG_1")
-      res.kegg <- enrichr(unique(c(up.genes, dn.genes)), databases = KEGG) # KEGG results only
-      # If significant results are present, save them
-      if(nrow(res.kegg[[KEGG]]) > 0 & sum(res.kegg[[KEGG]]$Adjusted.P.value < p_adj_cutoff) > 0) {
-        res.kegg <- as.data.frame(res.kegg[[KEGG]])
-        res.kegg <- res.kegg[res.kegg$Adjusted.P.value < p_adj_cutoff, , drop = FALSE]
-      }
+      # run the up regulated and down regulated genes together 
+      print(paste0("KEGG pathway run on ", length(unique(c(up.genes, dn.genes))),
+                   " genes without distinguishing them by directionality."))
+      # run hypergeomtric KEGG analysis on combination of genes 
+      res.kegg <- kegg_enrich(unique(c(up.genes, dn.genes)), 
+                              p_adj_cutoff = p_adj_cutoff)
     }
   }
 ```
 
-# GSEA analysis 
+## MSigDb
 
-```{r}
-  # All DEGs for GSEA
-  res.all <- res
-  # Convert symbols to entrezids
-  eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
-  # Attach converted entrezids
-  res.all <- left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
-  res.all <- res.all[ !is.na(res.all$ENTREZID), ]
-  # List of t-statistics
-  geneList <- res.all$logFC
-  # Make it named
-  names(geneList) <- res.all$ENTREZID
-  # And decreasing sorted
-  geneList <- sort(geneList, decreasing = TRUE)
-  
+```{r hyper_msig}
+# Convert Entrez IDs back to symbols, to correct MSigDb enrichment output
+entrez_to_symbols <- function(x = res.msigdf.em$geneID) {
+  sapply(x, function(xx) {
+    # Split EntrezIDs
+    xx_split <- strsplit(xx, "/")[[1]]
+    # Convert entrezids to symbols
+    eid <- suppressMessages(bitr(xx_split, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb))
+    # combine back
+    paste(sort(eid$SYMBOL), collapse = "/")
+  })
+}
+
+# Get unique categories
+# m_df <- msigdbr(species = msigdbr_org)
+# m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
+# Use most informative ones
+m_df_gs_cat <- c("C2", "C5", "H")
+# Function to perform enrichment analysis using MSigDb signatures
+msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   # Top DEGs for enrichr
-  res.all <- res[res$p.adj < FDR_cutoff, ]
+  res.all <- dataset[dataset$p.adj < FDR_cutoff, ]
   # Convert symbols to entrezids
   eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
   # Attach converted entrezids
@@ -188,11 +226,66 @@ res <- res[ order(res$p.adj, decreasing = FALSE), ]
   names(geneList_significant) <- res.all$ENTREZID
   # And decreasing sorted
   geneList_significant <- sort(geneList_significant, decreasing = TRUE)
+  res.msigdf.all <- list()
+  # m_df_gs_cat="H" # For testing
+  for (gs_cat in m_df_gs_cat) {
+     m_t2g <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
+       dplyr::select(gs_name, entrez_gene)
+    em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
+    res.msigdf.em <-em@result
+    res.msigdf.em$geneID <- entrez_to_symbols(x = res.msigdf.em$geneID)
+    # Check if the results are non-empty
+    if (nrow(res.msigdf.em[res.msigdf.em$p.adjust < p_adj_cutoff, , drop = FALSE]) > 0) {
+      res.msigdf.em <- res.msigdf.em[res.msigdf.em$p.adjust < p_adj_cutoff, , drop = FALSE]
+      # res.msigdf.em$core_enrichment <- entrez_to_symbols(x = res.msigdf.em$geneID)
+      # sort the genes alphabetically
+      res.msigdf.em <- res.msigdf.em %>% 
+      # separate the rows by splitting by the delimiter and expanding the rows 
+      separate_rows(geneID, convert = TRUE, sep = "/") %>% 
+      # group the genes by their other columns to keep them 
+      group_by(ID, Description, GeneRatio, BgRatio, pvalue, p.adjust, qvalue, Count) %>%
+      # sort the genes for each term 
+      arrange(geneID) %>% 
+      summarise(geneID = paste(geneID, collapse="/")) %>% 
+      arrange(pvalue, p.adjust)
+    } else {
+      res.msigdf.em <- as.data.frame(matrix(data = "Nothing significant", nrow = 1,
+                                            ncol = 9))
+      colnames(res.msigdf.em) <- c("ID", "Description", "GeneRatio", "BgRatio",
+                                   "pvalue", "p.adjust", "qvalue", "geneID", "Count")
+    }
 
+    # Combine the results and add names
+    res.msigdf.all <- c(res.msigdf.all, list(res.msigdf.em))
+    names(res.msigdf.all)[length(res.msigdf.all)] <- paste0("Enrich.", gs_cat)
+  }
+  res.msigdf.all
+}
+# run unranked MSigDb analysis 
+res.msigdb <- msigdb_enrich(res, p_adj_cutoff = p_adj_cutoff)
 ```
 
-```{r}
-  ## GSEA using clusterProfiler
+# GSEA analysis 
+
+## KEGG
+
+```{r gsea.kegg}
+# Function to perform GSEA analysis on KEGG
+gsea_kegg_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
+  # All DEGs for GSEA
+  res.all <- dataset
+  # Convert symbols to entrezids
+  eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+  # Attach converted entrezids
+  res.all <- left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+  res.all <- res.all[ !is.na(res.all$ENTREZID), ]
+  # List of t-statistics
+  geneList <- res.all$logFC
+  # Make it named
+  names(geneList) <- res.all$ENTREZID
+  # And decreasing sorted
+  geneList <- sort(geneList, decreasing = TRUE)
+
   # Actual GSEA
   set.seed(1)
   ego3 <- gseKEGG(geneList     = geneList,
@@ -204,59 +297,121 @@ res <- res[ order(res$p.adj, decreasing = FALSE), ]
   # Get summary
   ego3 <- setReadable(ego3, OrgDb = OrgDb, keyType = "ENTREZID")
   res.kegg.gsea <- as.data.frame(ego3)
-  # Prepare for table output
+  # Process if non-empty
+  if( nrow(res.kegg.gsea) > 0) {
+    # Prepare for table output
   res.kegg.gsea <- res.kegg.gsea[, c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")]
-  res.kegg.gsea <- res.kegg.gsea[order(abs(res.kegg.gsea$NES), decreasing = TRUE), ]
-  res.kegg.gsea <- res.kegg.gsea[res.kegg.gsea$p.adjust < p_adj_cutoff, ]
-  res.kegg.gsea$NES       <- round(res.kegg.gsea$NES, digits = 2)
-  res.kegg.gsea$pvalue    <- formatC(res.kegg.gsea$pvalue, format = "e", digits = 2)
-  res.kegg.gsea$p.adjust  <- formatC(res.kegg.gsea$p.adjust, format = "e", digits = 2)
-  rownames(res.kegg.gsea) <- NULL
+  # reorder the genes alphabetically 
+    res.kegg.gsea <- res.kegg.gsea %>% 
+      # separate the rows by splitting by the delimiter and expanding the rows 
+      separate_rows(core_enrichment, convert = TRUE, sep = "/") %>% 
+      # group the genes by their ID & other columns to keep them 
+      group_by(ID, Description, NES, pvalue, p.adjust) %>% 
+      # sort the genes for each term 
+      arrange(core_enrichment) %>% 
+      # now collapse them again so they will be sorted alphabetically 
+      summarise(core_enrichment = paste(core_enrichment, collapse="/"))
+    
+    res.kegg.gsea <- res.kegg.gsea[order(abs(res.kegg.gsea$NES), decreasing = TRUE), ]
+    res.kegg.gsea <- res.kegg.gsea[res.kegg.gsea$p.adjust < p_adj_cutoff, ]
+    res.kegg.gsea$NES       <- round(res.kegg.gsea$NES, digits = 2)
+    res.kegg.gsea$pvalue    <- formatC(res.kegg.gsea$pvalue, format = "e", digits = 2)
+    res.kegg.gsea$p.adjust  <- formatC(res.kegg.gsea$p.adjust, format = "e", digits = 2)
+    rownames(res.kegg.gsea) <- NULL
+  } else {
+    res.kegg.gsea <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 6))
+    colnames(res.kegg.gsea) <- c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")
+  }
+  return(res.kegg.gsea)
+}
+
+# run GSEA KEGG analysis 
+res.kegg.gsea <- gsea_kegg_enrich(res, p_adj_cutoff = p_adj_cutoff)
 ```
 
-# MSigDB analysis
+## MSigDb
 
-```{r}
-# Convert Entrez IDs back to symbols
-entrez_to_symbols <- function(x = res.msigdf.em$geneID) {
-  sapply(x, function(xx) {
-    xx_split <- strsplit(xx, "/")[[1]]
-    # Convert entrezids to symbols
-    eid <- bitr(xx_split, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb)
-    # combine back
-    paste(sort(eid$SYMBOL), collapse = "/")
-  })
+```{r gsea.msig}
+# Function to perform GSEA analysis using MSigDb signatures
+gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
+  res.all <- dataset
+  # Convert symbols to entrezids
+  eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+  # Attach converted entrezids
+  res.all <- left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+  res.all <- res.all[ !is.na(res.all$ENTREZID), ]
+  # List of t-statistics
+  geneList <- res.all$logFC
+  # Make it named
+  names(geneList) <- res.all$ENTREZID
+  # And decreasing sorted
+  geneList <- sort(geneList, decreasing = TRUE)
+  # Actual MSIGDB
+  res.msigdf.all <- list()
+  # m_df_gs_cat="H" # For testing
+  for (gs_cat in m_df_gs_cat) {
+    # Get all signatures for a given category
+    m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% 
+      dplyr::select(gs_name, entrez_gene)
+    # em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
+    # res.msigdf.em <-em@result
+    # res.msigdf.em$geneID <- entrez_to_symbols(x = res.msigdf.em$geneID)
+    # run GSEA
+    em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
+    # Check if the results are non-empty
+    if (nrow(em2@result) > 0) {
+      res.msigdf.em2 <- em2@result
+      res.msigdf.em2$core_enrichment <- entrez_to_symbols(x = res.msigdf.em2$core_enrichment)
+      # sort the genes alphabetically
+      res.msigdf.em2 <- res.msigdf.em2 %>% 
+      # separate the rows by splitting by the delimiter and expanding the rows 
+      separate_rows(core_enrichment, convert = TRUE, sep = "/") %>% 
+      # group the genes by their other columns to keep them 
+      group_by(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, qvalues,
+               rank, leading_edge) %>%
+      # sort the genes for each term 
+      arrange(core_enrichment) %>% 
+      summarise(core_enrichment = paste(core_enrichment, collapse="/")) %>% 
+      arrange(pvalue, p.adjust) 
+    } else {
+      res.msigdf.em2 <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 11))
+      colnames(res.msigdf.em2) <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
+      res.msigdf.em2 <- res.msigdf.em2 %>% # drop unneeded columns
+      dplyr::filter(-c(setSize, enrichmentScore, qvalues, rank, leading_edge))
+    }
+    
+    res.msigdf.all <- c(res.msigdf.all, list(res.msigdf.em2))
+    names(res.msigdf.all)[length(res.msigdf.all) - 0] <- paste0("GSEA.", gs_cat)
+  }
+  return(res.msigdf.all)
 }
 
-library(msigdbr)
-# m_df <- msigdbr(species = "Homo sapiens")
-# table(m_df$gs_cat)
-# 
-# m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
-m_df_gs_cat <- c("C2", "C5", "H")
-res.msigdf.all <- list()
-# gs_cat="H"
-for (gs_cat in m_df_gs_cat) {
-  m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% dplyr::select(gs_name, entrez_gene)
-  em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
-  res.msigdf.em <-em@result
-  res.msigdf.em$geneID <- entrez_to_symbols(x = res.msigdf.em$geneID)
-  
-  em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
-  res.msigdf.em2 <-em2@result
-  res.msigdf.em2$core_enrichment <- entrez_to_symbols(x = res.msigdf.em2$core_enrichment)
-  
-  res.msigdf.all <- c(res.msigdf.all, list(res.msigdf.em), list(res.msigdf.em2))
-  names(res.msigdf.all)[length(res.msigdf.all) - 1] <- paste0("Enrich.", gs_cat)
-  names(res.msigdf.all)[length(res.msigdf.all) - 0] <- paste0("GSEA.", gs_cat)
-}
+# call GSEA MSigDb
+res.msigdb.gsea <- gsea_msigdb_enrich(res, p_adj_cutoff = p_adj_cutoff)
 ```
 
 # Save the data
 
+## Combine MSigDb Results 
+
+```{r msig_combine}
+# empty list to hold results from unranked MSigDb and GSEA MSigDb in order grouped by enrichment category 
+res.msigdf.all <- list()
+
+# iterate through length of each list of dataframes, doesn't matter which 
+for (i in 1:length(names(res.msigdb))) {
+  # add unranked MsigDB results first 
+  res.msigdf.all[[length(res.msigdf.all)+1]] = res.msigdb[[i]]
+  names(res.msigdf.all)[[length(res.msigdf.all)]] = names(res.msigdb[i])
+  # add GSEA MsigDB next 
+  res.msigdf.all[[length(res.msigdf.all)+1]] = res.msigdb.gsea[[i]]
+  names(res.msigdf.all)[[length(res.msigdf.all)]] = names(res.msigdb.gsea[i])
+}
+```
+
 ```{r}
-x <- c(list(res.kegg), list(res.kegg.gsea), res.msigdf.all)
-names(x)[1:2] <- c("Enrich.KEGG", "GSEA.KEGG")
+x <- c(list(Enrich.KEGG = res.kegg), list(GSEA.KEGG = res.kegg.gsea), res.msigdf.all)
+# names(x)[1:2] <- c("Enrich.KEGG", "GSEA.KEGG")
 write_xlsx(x, path = fileNameOut1)
 ```
 
