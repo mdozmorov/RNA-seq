@@ -264,6 +264,7 @@ msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       # Append description
       res.msigdf.em <- left_join(res.msigdf.em, m_t2d, by = c("ID" = "gs_name"))
       res.msigdf.em$Description <- res.msigdf.em$gs_description
+      res.msigdf.em$gs_description <- NULL
     } else {
       res.msigdf.em <- as.data.frame(matrix(data = "Nothing significant", nrow = 1,
                                             ncol = 9))
@@ -392,6 +393,7 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       # Append description
       res.msigdf.em2 <- left_join(res.msigdf.em2, m_t2d, by = c("ID" = "gs_name"))
       res.msigdf.em2$Description <- res.msigdf.em2$gs_description
+      res.msigdf.em2$gs_description <- NULL
     } else {
       res.msigdf.em2 <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 11))
       colnames(res.msigdf.em2) <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
