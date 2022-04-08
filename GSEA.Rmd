@@ -40,11 +40,13 @@ data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunL
 fileNameIn1   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
 degs_sheet     <- "1.protein-coding" # Which worksheet contains differentially expressed genes
 fileNameOut1 <- file.path(data_dir, "results/GSEA_DEGs.xlsx")
+# Create output folder, if not exists
+if (!dir.exists(file.path(data_dir, "results"))) dir.create(file.path(data_dir, "results"))
 
 # Which pathway enrichment analysis to run
 run_gsea <- TRUE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
 min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
-max_kegg_genes <- 3000 # Maximum number of genes to run enrichment analysis on
+max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
 FDR_cutoff     <- 0.3 # FDR cutoff for DEGs
 p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
@@ -73,6 +75,7 @@ if (mouse_analysis) {
   gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
   gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "" & gene_annotations$biotype == "protein_coding", ]
   KEGG <- "KEGG_2019_Mouse"
+  msigdbr_org <- "Mus musculus"
   # Gene length for TPM calculations
   gene_length <- data.frame(Geneid = grcm38$ensgene, Length = grcm38$end - grcm38$start)
 }
@@ -351,7 +354,7 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   # m_df_gs_cat="H" # For testing
   for (gs_cat in m_df_gs_cat) {
     # Get all signatures for a given category
-    m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% 
+    m_t2g <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
       dplyr::select(gs_name, entrez_gene)
     # em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
     # res.msigdf.em <-em@result
