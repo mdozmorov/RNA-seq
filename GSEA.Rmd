@@ -51,6 +51,7 @@ up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulate
 FDR_cutoff     <- 0.3 # FDR cutoff for DEGs
 p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
 nperm          <- 1000 # Number of permutations (for GSEA)
+msigdb_all     <- FALSE # Use all MSigDb categories (TRUE), or c("C2", "C5", "H") (FALSE)
 ```
 
 ```{r}
@@ -210,10 +211,14 @@ entrez_to_symbols <- function(x = res.msigdf.em$geneID) {
 }
 
 # Get unique categories
-# m_df <- msigdbr(species = msigdbr_org)
-# m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
-# Use most informative ones
-m_df_gs_cat <- c("C2", "C5", "H")
+if (msigdb_all) {
+  m_df <- msigdbr(species = msigdbr_org)
+  m_df_gs_cat <- unique(m_df$gs_cat) %>% sort()
+} else {
+  # Use most informative ones
+  m_df_gs_cat <- c("C2", "C5", "H")
+}
+
 # Function to perform enrichment analysis using MSigDb signatures
 msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   # Top DEGs for enrichr
@@ -232,8 +237,13 @@ msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   res.msigdf.all <- list()
   # m_df_gs_cat="H" # For testing
   for (gs_cat in m_df_gs_cat) {
+    # Term to gene
      m_t2g <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
-       dplyr::select(gs_name, entrez_gene)
+       dplyr::distinct(gs_name, entrez_gene)
+    # Term to description 
+    m_t2d <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
+       dplyr::distinct(gs_name, gs_description)
+    # Enrichment analysis
     em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
     res.msigdf.em <-em@result
     res.msigdf.em$geneID <- entrez_to_symbols(x = res.msigdf.em$geneID)
@@ -251,6 +261,9 @@ msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       arrange(geneID) %>% 
       summarise(geneID = paste(geneID, collapse="/")) %>% 
       arrange(pvalue, p.adjust)
+      # Append description
+      res.msigdf.em <- left_join(res.msigdf.em, m_t2d, by = c("ID" = "gs_name"))
+      res.msigdf.em$Description <- res.msigdf.em$gs_description
     } else {
       res.msigdf.em <- as.data.frame(matrix(data = "Nothing significant", nrow = 1,
                                             ncol = 9))
@@ -353,13 +366,13 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   res.msigdf.all <- list()
   # m_df_gs_cat="H" # For testing
   for (gs_cat in m_df_gs_cat) {
-    # Get all signatures for a given category
-    m_t2g <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
-      dplyr::select(gs_name, entrez_gene)
-    # em <- enricher(names(geneList_significant), TERM2GENE=m_t2g, pvalueCutoff = p_adj_cutoff)
-    # res.msigdf.em <-em@result
-    # res.msigdf.em$geneID <- entrez_to_symbols(x = res.msigdf.em$geneID)
-    # run GSEA
+    # Term to gene
+     m_t2g <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
+       dplyr::distinct(gs_name, entrez_gene)
+    # Term to description 
+    m_t2d <- msigdbr(species = msigdbr_org, category = gs_cat) %>% 
+       dplyr::distinct(gs_name, gs_description)
+    # Enrichment analysis
     em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
     # Check if the results are non-empty
     if (nrow(em2@result) > 0) {
@@ -376,6 +389,9 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       arrange(core_enrichment) %>% 
       summarise(core_enrichment = paste(core_enrichment, collapse="/")) %>% 
       arrange(pvalue, p.adjust) 
+      # Append description
+      res.msigdf.em2 <- left_join(res.msigdf.em2, m_t2d, by = c("ID" = "gs_name"))
+      res.msigdf.em2$Description <- res.msigdf.em2$gs_description
     } else {
       res.msigdf.em2 <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 11))
       colnames(res.msigdf.em2) <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
@@ -439,7 +455,7 @@ for (gs_selected in gs_selected_all) {
   print(gs_selected)
   # gs_selected <- "HALLMARK_DNA_REPAIR"
   # Do the enrichment analysis
-  m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% dplyr::select(gs_name, entrez_gene) %>% dplyr::filter(gs_name == !!gs_selected)
+  m_t2g <- msigdbr(species = "Homo sapiens", category = gs_cat) %>% dplyr::distinct(gs_name, entrez_gene) %>% dplyr::filter(gs_name == !!gs_selected)
   em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
   # Save the picture
   gseaplot(em2, geneSetID = 1, by = "runningScore")
