@@ -1,0 +1,56 @@
+---
+title: "VennDiagram"
+format: pdf
+# editor: visual
+---
+
+```{r}
+library(readxl)
+library(Vennerable)
+```
+
+# Helper functions
+
+p-values are calculated using Chi-squared test under the assumption there are 22,000 protein coding gene. This is a flexibly defined parameter that minimally affect the current highly significant results.
+
+```{r}
+Vstem_significance <- function(obj = Vstem, Total = 1139) {
+  # Extract venn counts
+  set1_only <- obj@IndicatorWeight["10", ".Weight"]
+  set2_only <- obj@IndicatorWeight["01", ".Weight"]
+  set1_set2  <- obj@IndicatorWeight["11", ".Weight"]
+  # Building contingency table
+  a1 <- set1_set2
+  a2 <- set1_only
+  a3 <- set2_only
+  a4 <- Total - (a1 + a2 + a3)
+  mtx <- matrix(data = c(a1, a2, a3, a4), nrow = 2)
+  chisq.test(mtx)
+  # fisher.test(mtx)
+}
+```
+
+# Settings
+
+```{r}
+dir_data <- "/Users/mdozmorov/Documents/Work/VCU_work/Tony/misc/2022-10-05.Venn"
+fileNameIn <- file.path(dir_data, "data/SYO.1.xlsx")
+fileNameOut <- file.path(dir_data, "results/Figure_Venn.svg")
+```
+
+# Vennerable
+
+```{r}
+mtx <- read_xlsx(fileNameIn, col_names = FALSE)
+
+x <- list(mtx$...1[!is.na(mtx$...1)], 
+          mtx$...2[!is.na(mtx$...2)], 
+          mtx$...8[!is.na(mtx$...8)])
+sapply(x, length)
+
+Vstem <- Venn(x, SetNames = c("SYO.1 - SS18-SSX", "SS signature", "SYO.1 - KDM2B"))
+svg(filename = fileNameOut)
+plot(Vstem, doWeights = TRUE)
+dev.off()
+```
+
