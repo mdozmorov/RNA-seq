@@ -1,0 +1,84 @@
+---
+title: "Linear representation of DEGs"
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: cerulean
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is', fig.width = 10, fig.height = 6) #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+```{r libraries}
+# Libraries
+library(readxl)
+library(ggplot2)
+library(ggrepel)
+library(svglite)
+library(ggprism)
+library(cowplot)
+library(ggprism)
+```
+
+```{r settings}
+# Settings
+
+dir_data <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunLee_Novogene"
+fileNameIn1 <- file.path(dir_data, "results/DEGs.xlsx")
+# Analysis name
+set1 <- "ENAP2NvsEmpty"
+```
+
+```{r data}
+# Load data
+mtx <- read_xlsx(fileNameIn1)
+# Sort by log fold change
+mtx <- mtx[order(mtx$logFC, decreasing = TRUE), ]
+```
+
+```{r}
+# Manually selected genes
+selected_genes <- c("ARGLU1", "NDRG1", "DDX39B", "CBSL", "PABPC1L", "CDK5RAP3", "LDHA", "GABRE", "AMH", "FSTL3", "VASN", "EFHD1", "FN1", "LOXL2", "DPP4", "EGLN2", "LDLR")
+# Signature to visualize, if preferred
+# gene_signature <- read_xlsx("data.custom/vanGroningen.2017/TableS2.xlsx", skip = 2, col_names = FALSE)
+# colnames(gene_signature) <- c("gene", "ID")
+
+# DESeq2 results
+# mtx_to_plot <- data.frame(pval = -log10(mtx$padj), 
+#                           logFC = mtx$log2FoldChange, 
+#                           rank = seq_along(mtx$gene_id),
+#                           gene = sapply(mtx$gene_name, function(x) if (x %in% selected_genes) {x} else {NA}) %>% unname(),
+#                           Group = ifelse(mtx$log2FoldChange > 0, "Upregulated", "Downregulated"))
+# edgeR results
+mtx_to_plot <- data.frame(pval = -log10(mtx$FDR), 
+                          logFC = mtx$logFC, 
+                          rank = seq_along(mtx$genes),
+                          gene = sapply(mtx$symbol, function(x) if (x %in% selected_genes) {x} else {NA}) %>% unname(),
+                          Group = ifelse(mtx$logFC > 0, "Upregulated", "Downregulated"))
+
+ggplot(mtx_to_plot, aes(x = rev(rank), y = logFC, color = Group, label = gene)) +
+  geom_point() +
+  geom_text_repel(colour = "black", size = 5 , na.rm = TRUE, direction = "both", max.overlaps = 40) +
+  theme_prism() +
+  scale_color_prism() +
+  xlab("Differentially expressed genes") +
+  ylab("Log2 fold change") +
+  theme(legend.position = c(0.2, 0.9)) # , axis.text.x=element_blank()
+  
+# ggsave(paste0("results/Linear_", set1, ".png"), width = 6.5, height = 4.5, dpi = 300)
+
+# plot(mtx_to_plot$logFC)
+```
+
