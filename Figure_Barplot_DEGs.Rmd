@@ -1,0 +1,112 @@
+---
+title: "Barplots of selected genes"
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: cerulean
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is', fig.width = 10, fig.height = 6) #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+```{r libraries}
+# Libraries
+library(readxl)
+library(ggplot2)
+library(ggsci)
+library(grid)
+library(gridExtra)
+library(reshape2)
+library(WGCNA)
+```
+
+```{r settings}
+# Settings
+dir_data <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunLee_Novogene"
+fileNameIn1 <- file.path(dir_data, "results/TPM.xlsx")
+# Manually selected genes
+selected_genes <- c("ARGLU1", "NDRG1", "DDX39B", "CBSL", "PABPC1L", "CDK5RAP3", "LDHA", "GABRE", "AMH", "FSTL3", "VASN", "EFHD1", "FN1", "LOXL2", "DPP4", "EGLN2", "LDLR")
+```
+
+```{r}
+# http://www.sthda.com/english/wiki/ggplot2-error-bars-quick-start-guide-r-software-and-data-visualization
+#+++++++++++++++++++++++++
+# Function to calculate the mean and the standard deviation
+  # for each group
+#+++++++++++++++++++++++++
+# data : a data frame
+# varname : the name of a column containing the variable
+  #to be summariezed
+# groupnames : vector of column names to be used as
+  # grouping variables
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+```
+
+```{r data}
+# Load data
+mtx <- read_xlsx(fileNameIn1)
+# Collapse rows of the count matrix
+mtx_counts <- data.matrix(mtx[, !(colnames(mtx) %in% c("ensgene", "symbol", "biotype", "description"))])
+mtx_collapsed <- WGCNA::collapseRows(mtx_counts, rowGroup = mtx$symbol, rowID = mtx$ensgene)$datETcollapsed
+# Subset to selected genes
+mtx_collapsed <- mtx_collapsed[rownames(mtx_collapsed) %in% selected_genes, ]
+# Reshape into long format
+mtx_collapsed_long <- melt(mtx_collapsed)
+colnames(mtx_collapsed_long) <- c("Gene", "Condition", "log2 TPM expression")
+# Simplify conditions and make character
+mtx_collapsed_long$Condition <- sapply(as.character(mtx_collapsed_long$Condition), function(x) strsplit(x, "_")[[1]][1])
+mtx_collapsed_long$Gene <- as.character(mtx_collapsed_long$Gene)
+# Calculate SD
+mtx_collapsed_long2 <- data_summary(mtx_collapsed_long, varname = "log2 TPM expression", groupnames = c("Gene", "Condition"))
+```
+
+```{r plots}
+# List to store plots
+list_plots <- list()
+# For each gene
+for (gene in unique(mtx_collapsed_long2$Gene)) {
+  # Subset the matrix
+  mtx_collapsed_long2_subset <- mtx_collapsed_long2[mtx_collapsed_long2$Gene == gene, ]
+  # Plot it
+  p <- ggplot(mtx_collapsed_long2_subset, aes(x=Gene, y=`log2 TPM expression`, fill=Condition)) + 
+    geom_bar(stat="identity", color="black", 
+             position=position_dodge()) +
+    geom_errorbar(aes(ymin=`log2 TPM expression`-sd, ymax=`log2 TPM expression`+sd), width=.2,
+                   position=position_dodge(.9)) +
+    theme_bw() +
+    scale_fill_lancet() +
+    ggtitle(gene)
+  # Save in the named list slot
+  list_plots <- c(list_plots, list(p))
+  names(list_plots)
+}
+```
+
+```{r fig.height=12}
+# Auto-selection of the number of columns to arrange chromosome-specific plots
+n <- length(list_plots)
+nCol <- floor(sqrt(n))
+do.call("grid.arrange", c(list_plots, ncol=nCol))
+```
