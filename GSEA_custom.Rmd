@@ -1,0 +1,290 @@
+---
+title: "GSEA custom signature Analysis"
+author: "Mikhail Dozmorov"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    theme: cerulean
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Set up the environment
+library(knitr)
+opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, dpi=100, warnings=F, message=F, comment=NA, warning=F, results='as.is', fig.width = 10, fig.height = 6) #out.width=700, 
+library(pander)
+panderOptions('table.split.table', Inf)
+set.seed(1)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+```{r libraries}
+library(readxl)
+library(writexl)
+library(enrichR) # install.packages("enrichR")
+library(annotables) # devtools::install_github("stephenturner/annotables") Annotations of Ensembl IDs
+library(clusterProfiler)
+library(DOSE)
+```
+
+```{r settings}
+# Data
+data_dir       <- "/Users/mdozmorov/Documents/Work/VCU_work/Tony/misc/2024-01-04.Krista_MYCN_signature" # Working directory
+fileNameIn1   <- file.path(data_dir, "data/SAN_results_DAC_all.xlsx") # File to save all results of differential expression analysis
+degs_sheet     <- "SAN_DAC_results_all" # Which worksheet contains differentially expressed genes
+fileNameOut1 <- file.path(data_dir, "results/GSEA_custom_SAN_DAC_results_all.xlsx")
+
+# Which pathway enrichment analysis to run
+run_gsea <- TRUE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
+min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
+max_kegg_genes <- 3000 # Maximum number of genes to run enrichment analysis on
+up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
+FDR_cutoff     <- 0.3 # FDR cutoff for DEGs
+p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
+nperm          <- 1000 # Number of permutations (for GSEA)
+```
+
+```{r}
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
+
+# Prepate gene annotations, remove non-canonical chromosome names
+if (human_analysis) {
+  library(org.Hs.eg.db)
+  OrgDb = "org.Hs.eg.db"; species = "hsa"
+  gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), c("ensgene", "symbol", "biotype", "description")]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  # If a gene has multiple biotypes, take the first one
+  gene_annotations <- gene_annotations %>% group_by(symbol, biotype) %>% slice_head()
+  KEGG <- "KEGG_2019_Human"
+  # Gene length for TPM calculations
+  gene_length <- data.frame(Geneid = grch38$ensgene, Length = grch38$end - grch38$start)
+}
+if (mouse_analysis) {
+  library(org.Mm.eg.db)
+  OrgDb = "org.Mm.eg.db"; species = "mmu"
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("ensgene", "symbol", "biotype", "description")]
+  gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
+  # If a gene has multiple biotypes, take the first one
+  gene_annotations <- gene_annotations %>% group_by(symbol, biotype) %>% slice_head()
+  KEGG <- "KEGG_2019_Mouse"
+  # Gene length for TPM calculations
+  gene_length <- data.frame(Geneid = grcm38$ensgene, Length = grcm38$end - grcm38$start)
+}
+# All genes for background
+all.symbol <- unique(gene_annotations$symbol[gene_annotations$biotype == "protein_coding" & !is.na(gene_annotations$symbol)]) 
+eid <- bitr(all.symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+all.entrez <- unique(eid$ENTREZID)
+```
+
+# Load differential genes
+
+```{r}
+mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
+res <- data.frame(symbol = mtx$symbol, logFC = mtx$log2FoldChange, p.val = mtx$pvalue, p.adj = mtx$padj)
+# Remove NAs
+res <- res[res$symbol != "NA", ]
+res <- res %>% group_by(symbol) %>% slice_head()
+res <- res[ order(res$p.val, decreasing = FALSE), ]
+```
+
+## Prepare differential gene lists
+
+### All genes
+
+```{r}
+# All DEGs for GSEA
+res.all <- res
+# Convert symbols to entrezids
+eid <- bitr(res.all$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+# Attach converted entrezids
+res.all <- left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+res.all <- res.all[ !is.na(res.all$ENTREZID), ]
+# List of t-statistics
+geneList <- res.all$logFC
+# Make it named
+names(geneList) <- res.all$ENTREZID
+# And decreasing sorted
+geneList <- sort(geneList, decreasing = TRUE)
+# Separate up and downregulated
+geneList_up <- geneList[geneList > 0]
+geneList_dn <- geneList[geneList < 0]
+```
+
+### Significant genes, FDR `r FDR_cutoff`
+
+```{r}
+# All DEGs for GSEA
+res.sig <- res[res$p.adj < FDR_cutoff, ]
+# Convert symbols to entrezids
+eid <- bitr(res.sig$symbol, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+# Attach converted entrezids
+res.sig <- left_join(res.sig, eid, by = c("symbol" = "SYMBOL"))
+res.sig <- res.sig[ !is.na(res.sig$ENTREZID), ]
+# List of t-statistics
+geneList_sig <- res.sig$logFC
+# Make it named
+names(geneList_sig) <- res.sig$ENTREZID
+# And decreasing sorted
+geneList_sig <- sort(geneList_sig, decreasing = TRUE)
+# Separate up and downregulated
+geneList_up_sig <- geneList_sig[geneList_sig > 0]
+geneList_dn_sig <- geneList_sig[geneList_sig < 0]
+```
+
+# Load signatures
+
+```{r}
+# vanGroningen.2017
+gene_signature <- read_xls("data/sd01.xls", range = c("A5:A161"), col_names = c("gene"))
+# colnames(gene_signature) <- c("gene", "ID")
+# Fix some gene names
+gene_signature$gene <- stringr::str_remove(gene_signature$gene, "\\*")
+# Convert symbols to entrezids
+eid <- bitr(gene_signature$gene, fromType="SYMBOL", toType="ENTREZID", OrgDb=OrgDb)
+# Join with the original signature
+eid <- left_join(eid, gene_signature, by = c("SYMBOL" = "gene"))
+# Check which genes failed to map
+gene_signature <- left_join(gene_signature, eid, by = c("gene" = "SYMBOL"))
+print("Genes failed to map")
+gene_signature$gene[is.na(gene_signature$ENTREZID)] %>% sort() %>% print()
+# Construct signature object from signature IDs and and ENTREZ gene names
+TERM2GENE <- data.frame(ID = "MYCN_sig", Gene = eid$ENTREZID)
+
+# Append universe
+term2universe <- data.frame(ID = "universe", Gene = unique(c(all.entrez, names(geneList))))
+TERM2GENE <- rbind(TERM2GENE, term2universe)
+```
+
+# Overlap with the signature
+
+p-values are calculated using Chi-squared test under the assumption there are 22,000 protein coding gene. This is a flexibly defined parameter that minimally affect the current highly significant results.
+
+```{r}
+library(Vennerable)
+Vstem_significance <- function(obj = Vstem, Total = 20000) {
+  # Extract venn counts
+  set1_only <- obj@IndicatorWeight["10", ".Weight"]
+  set2_only <- obj@IndicatorWeight["01", ".Weight"]
+  set1_set2  <- obj@IndicatorWeight["11", ".Weight"]
+  # Building contingency table
+  a1 <- set1_set2
+  a2 <- set1_only
+  a3 <- set2_only
+  a4 <- Total - (a1 + a2 + a3)
+  mtx <- matrix(data = c(a1, a2, a3, a4), nrow = 2)
+  chisq.test(mtx)
+  # fisher.test(mtx)
+}
+```
+
+## Upregulated
+
+```{r}
+x <- list(eid$ENTREZID, names(geneList_up_sig))
+sapply(x, length)
+
+Vstem <- Venn(x, SetNames = c("Signature", "UP"))
+plot(Vstem, doWeights = TRUE)
+Vstem_significance(obj = Vstem, Total = length(geneList))
+```
+
+## Downregulated
+
+```{r}
+x <- list(eid$ENTREZID, names(geneList_dn_sig))
+sapply(x, length)
+
+Vstem <- Venn(x, SetNames = c("Signature", "DN"))
+plot(Vstem, doWeights = TRUE)
+Vstem_significance(obj = Vstem, Total = length(geneList))
+```
+
+# Custom analysis
+
+## Hypergeometric test (as in IPA)
+
+**Legend:** "ID/Description" - name of functional annotation; "GeneRatio" - number of differentially expressed genes in a given annotation, out of the total number of differential genes; "BgRatio" - number of genes in a functional annotation, out of the total genes in the genome; "pvalue/p.adjust" - unadjusted/FDR adjusted enrichment p-value; "geneID" - list of differentially expressed genes in a functional annotation; "Count" - count of genes in a functional annotation, same number as numerator in "GeneRatio".
+
+### Up- and downregulated differentially expressed genes
+
+```{r}
+em <- enricher(names(geneList_dn_sig), TERM2GENE=TERM2GENE, pvalueCutoff = p_adj_cutoff)
+res.msigdf.em <-em@result
+# Replace ENTREZ IDs back to symbols
+res.msigdf.em$geneID <- sapply(res.msigdf.em$geneID, function(x) {
+  entrez_ids <- strsplit(x, "/")[[1]]
+  eid <- bitr(entrez_ids, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb)
+  eid$SYMBOL %>% sort %>% paste(collapse = "/")
+}) %>% unname
+res.msigdf.em[, c("GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID")]
+```
+
+### Upregulated differentially expressed genes
+
+```{r}
+em <- enricher(names(geneList_up_sig), TERM2GENE=TERM2GENE, pvalueCutoff = p_adj_cutoff)
+res.msigdf.em <-em@result
+# Replace ENTREZ IDs back to symbols
+res.msigdf.em$geneID <- sapply(res.msigdf.em$geneID, function(x) {
+  entrez_ids <- strsplit(x, "/")[[1]]
+  eid <- bitr(entrez_ids, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb)
+  eid$SYMBOL %>% sort %>% paste(collapse = "/")
+}) %>% unname
+res.msigdf.em[, c("GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID")]
+```
+
+### Downregulated differentially expressed genes
+
+```{r}
+em <- enricher(names(geneList_dn_sig), TERM2GENE=TERM2GENE, pvalueCutoff = p_adj_cutoff)
+res.msigdf.em <-em@result
+# Replace ENTREZ IDs back to symbols
+res.msigdf.em$geneID <- sapply(res.msigdf.em$geneID, function(x) {
+  entrez_ids <- strsplit(x, "/")[[1]]
+  eid <- bitr(entrez_ids, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb)
+  eid$SYMBOL %>% sort %>% paste(collapse = "/")
+}) %>% unname
+res.msigdf.em[, c("GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID")]
+```
+
+# GSEA (considering order of differentially expressed genes by fold change)
+
+**Legend:**  "ID/Description" - name of functional annotation; "setSize" - number of differentially expressed genes in a given annotation; "enrichmentScore" - positive/negative values indicate enrichment/depletion, respectively; "NES" - [link: normalized enrichment score](http://software.broadinstitute.org/gsea/doc/GSEAUserGuideFrame.html); "pvalue/p.adjust" - unadjusted/FDR-adjusted p-value; "core_enrichment" - list of differentially expressed genes in a functional annotation.
+
+```{r eval=FALSE}
+em2 <- GSEA(geneList_sig, TERM2GENE = TERM2GENE[TERM2GENE$ID ! = "universe", ], pvalueCutoff = p_adj_cutoff)
+em2 <- GSEA(geneList_sig, TERM2GENE = TERM2GENE, pvalueCutoff = p_adj_cutoff)
+res.msigdf.em2 <- em2@result
+# Replace ENTREZ IDs back to symbols
+res.msigdf.em2$core_enrichment<- sapply(res.msigdf.em2$core_enrichment, function(x) {
+  entrez_ids <- strsplit(x, "/")[[1]]
+  eid <- bitr(entrez_ids, fromType="ENTREZID", toType="SYMBOL", OrgDb=OrgDb)
+  eid$SYMBOL %>% sort %>% paste(collapse = "/")
+}) %>% unname
+res.msigdf.em2
+```
+
+```{r eval=FALSE}
+# Save the data
+
+# Combine
+res.msigdf.all <- c(list(res.msigdf.em), list(res.msigdf.em2))
+names(res.msigdf.all)[length(res.msigdf.all) - 1] <- paste0("Enrich.", "custom")
+names(res.msigdf.all)[length(res.msigdf.all) - 0] <- paste0("GSEA.", "custom")
+
+x <- c(res.msigdf.all)
+write_xlsx(x, path = fileNameOut1)
+```
+
+```{r fig.width = 6, fig.height = 3, eval=FALSE}
+# jpeg("Figure_GSEA.jpg", width = 8, height = 12, dpi = 100)
+gseaplot(em2, geneSetID = "ADRN", by = "runningScore")
+ggsave(filename = "Figure_GSEA.jpg", width = 6, height = 3, units = "in", dpi = 300)
+# dev.off()
+#gseaplot(em2, geneSetID = 1, by = "preranked")
+```
