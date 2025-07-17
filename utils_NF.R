@@ -34,9 +34,9 @@ p.vals <- function(object, p_adj_cutoff = 0.1, subset_by = subset_by, comparison
 
 
 # Function to plot and save selected gene lists
-genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, subset_by = c("A", "B"), comparison = "C231_noCRISPR_vs_Negative", clustmethod = "ward", width = 6, height = 8, print_to_file = TRUE) {
+genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, subset_by = c("A", "B"), comparison = "C231_noCRISPR_vs_Negative", clustmethod = "ward", width = 6, height = 8, print_to_file = TRUE, merge_by = "symbol") {
   # Select columns to subset
-  if (!is.na(subset_by)){
+  if (any(!is.na(subset_by))){
     subset_index <- grepl(paste(subset_by, collapse = "|"), sample_annotation_subset$Group) 
   } else {
     subset_index <- 1:ncol(cpm(edgeR.dgelist, log = TRUE))
@@ -49,9 +49,21 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
   # write.xlsx2(object, fileName, sheetName = comparison, row.names = FALSE) # Save gene list
   
   # Plot top genes
-  genes.to.plot <- object[1:nplot, c("genes", "symbol")] 
-  genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes], genes.to.plot$genes), ] # Make the same order as the genes subsetted from the whole dataset
+  genes.to.plot <- object[1:nplot, c("genes"), drop = FALSE] 
+  if (merge_by == "symbol") {
+    genes.to.plot <- left_join(genes.to.plot, gene_annotations, by = c("genes" = "symbol"))
+  }
+  if (merge_by == "ensgene") {
+    genes.to.plot <- left_join(genes.to.plot, gene_annotations, by = c("genes" = "ensgene"))
+  }
+  genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes], genes.to.plot$genes), , drop = FALSE] # Make the same order as the genes subsetted from the whole dataset
   matrix.to.plot <- cpm(edgeR.dgelist, log = TRUE, normalized.lib.sizes=TRUE)[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$genes, subset_index] # * edgeR.dgelist@.Data[[2]]$norm.factors[subset_index] # Subset matrix to plot
+  if (merge_by == "symbol") {
+    rownames(matrix.to.plot) <- genes.to.plot$genes
+  }
+  if (merge_by == "ensgene") {
+    rownames(matrix.to.plot) <- genes.to.plot$symbol
+  }
   
   annotation_col <- data.frame(Group = sample_annotation_subset$Group[subset_index])
   rownames(annotation_col) <- colnames(cpm(edgeR.dgelist)[, subset_index])
@@ -63,7 +75,6 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
   
   # Save to PDF
   if (print_to_file) {
-    dev.off()
     pdf(paste0("results/Figure_Heatmap_", comparison, "_", nplot, ".pdf"), width = width, height = height)
     pheatmap(matrix.to.plot, color = col3, clustering_method = "ward", treeheight_row = FALSE, treeheight_col = FALSE, annotation_col = annotation_col, labels_row = genes.to.plot$symbol, scale = "row")
     dev.off()
@@ -75,23 +86,30 @@ genes_to_heatmap <- function(object, edgeR.dgelist = edgeR.dgelist, nplot = 50, 
 
 
 # A function to plot a barplot of selected genes in selected conditions
-genes_to_boxplot <- function(selected_genes = c("NF1", "SND1", "MTDH"), subset_by = c("C", "AA")) {
+genes_to_boxplot <- function(selected_genes = c("NF1", "SND1", "MTDH"), subset_by = c("C", "AA"), merge_by = "symbol") {
   # Select columns to subset
   # subset_index <- grepl(paste(subset_by, collapse = "|"), sample_annotation$Group) 
   subset_index <- sample_annotation_subset$Group == subset_by[1] | sample_annotation_subset$Group == subset_by[2]
   # Select EntrezIDs to plot
-  genes.to.plot <- gene_annotations[gene_annotations$symbol %in% selected_genes, ]
-  genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene], genes.to.plot$ensgene), ] # Make the same order as the genes subsetted from the whole dataset
+  if (merge_by == "symbol") {
+    genes.to.plot <- gene_annotations[gene_annotations$symbol %in% selected_genes, ]
+    genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$symbol], genes.to.plot$symbol), ] # Make the same order as the genes subsetted from the whole dataset
+    index_to_keep  <- edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$symbol
+  }
+  if (merge_by == "ensgene") {
+    genes.to.plot <- gene_annotations[gene_annotations$ensgene %in% selected_genes, ]
+    genes.to.plot <- genes.to.plot[match(edgeR.dgelist@.Data[[3]]$genes[edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene], genes.to.plot$ensgene), ] # Make the same order as the genes subsetted from the whole dataset
+    index_to_keep  <- edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene
+  }
   # Expression of genes to plot
   matrix.to.plot <- cpm(edgeR.dgelist, log = TRUE)
-  index_to_keep  <- edgeR.dgelist@.Data[[3]]$genes %in% genes.to.plot$ensgene
   matrix.to.plot <- matrix.to.plot[index_to_keep, subset_index, drop = FALSE] 
   rownames(matrix.to.plot) <- edgeR.dgelist@.Data[[3]]$genes[index_to_keep]
   colnames(matrix.to.plot) <- sample_annotation_subset$Group[subset_index]
   # Add genes
-  matrix.to.plot <- data.frame(Gene = genes.to.plot$symbol[match(rownames(matrix.to.plot), genes.to.plot$ensgene)], matrix.to.plot, check.names = FALSE)
+  matrix.to.plot <- data.frame(Gene = rownames(matrix.to.plot), matrix.to.plot, check.names = FALSE)
  # Make long format
-  matrix.to.plot_melted <- pivot_longer(matrix.to.plot, cols = colnames(matrix.to.plot)[colnames(matrix.to.plot) != "Gene"])
+  matrix.to.plot_melted <- tidyr::pivot_longer(matrix.to.plot, cols = colnames(matrix.to.plot)[colnames(matrix.to.plot) != "Gene"])
   matrix.to.plot_melted$Gene <- as.factor(matrix.to.plot_melted$Gene) # factor(matrix.to.plot_melted$Gene, levels = unique(matrix.to.plot_melted$Gene))
   matrix.to.plot_melted$name <- as.factor(matrix.to.plot_melted$name) # factor(matrix.to.plot_melted$variable %>% as.character(), levels = unique(matrix.to.plot_melted$variable %>% as.character()))
   # Plot
