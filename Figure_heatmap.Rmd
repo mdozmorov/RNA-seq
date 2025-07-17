@@ -31,21 +31,24 @@ library(readxl)
 library(EnhancedVolcano)
 library(reshape2)
 library(ggplot2)
+library("ggsci")
+library(scales)
+# scales::show_col(pal_lancet("lanonc")(8))
+mycols = pal_lancet("lanonc")(8)
 ```
 
 # Settings 
 
 ```{r settings}
 # Data
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunLee_Novogene/" # Working directory
+data_dir       <- getwd() # Working directory
 fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
-fileName_signature <- "data/signature.txt" # Text file with gene name per line signature
+# fileName_signature <- "data/Hep3B_877_UPRgenes_FC.xlsx" # Text file with gene name per line signature
 fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of 
-fileName_rna1   <- file.path(data_dir, "results/DEGs_full.xlsx") # File to save all results of 
 nplot          <- 50 # How many genes to plot on a heatmap
 # Color palette for the heatmap, https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/colorPaletteCheatsheet.pdf
-col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
-# col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
+# col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
+col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
 # col3 <- colorRampPalette(c('red', 'gray', 'green'))(20)
 # col3 <- colorRamps::green2red(n = 20)
 ```
@@ -53,37 +56,40 @@ col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 # Load data
 
 ```{r}
-# TPM data
-mtx_full <- read_xlsx(fileName_tpm) %>% as.data.frame()
-rownames(mtx_full) <- mtx_full$ensgene
-mtx <- mtx_full[, c("Empty_1","Empty_2","Empty_3","ERAP2N_1","ERAP2N_2","ERAP2N_3")]
-# Signature data
-# signature <- readLines(fileName_signature)
-# setdiff(signature, mtx$symbol) # Gene names not found in TPM file
-res <- read_xlsx(fileName_rna)
-res_subset <- res[1:nplot, c("genes", "symbol")]
+sample_annotation <- read.csv(file.path(data_dir, "samplesheet.csv"))
+
+sample_annotation$Sample <- basename(sample_annotation$fastq_1) %>% sub("_R1_001.fastq.gz", "", .) %>% stringr::str_replace(., "-", "_REP")
+# Explicitly make factors. Manually adjust for all columns in the sample annotation file
+sample_annotation$Group   <- sub("_REP[0-9]$", "", sample_annotation$sample) %>% factor()
 ```
 
 ```{r}
-# Sample annotation
-sample_annotation <- read_csv(paste0(data_dir, "data/sample_annotation.csv"))
-sample_annotation$Sample <- make.names(sample_annotation$Sample)
-sample_annotation$Sample <- sub(".txt.gz", "", sample_annotation$Sample)
-all.equal(sample_annotation$Sample, colnames(mtx))
+# TPM data
+mtx <- read_xlsx(fileName_tpm) %>% as.data.frame()
+rownames(mtx) <- mtx$Geneid
+mtx$Geneid <- NULL
+# Signature data
+# signature <- read_xlsx(fileName_signature)
+# setdiff(signature$genes, rownames(mtx)) # Gene names not found in TPM file
+# All DEGs
+res <- read_xlsx(fileName_rna, sheet = "1.DEGs")
+res <- res[res$biotype == "protein_coding", ]
+res_subset <- res[1:nplot, c("genes"), drop = FALSE]
 ```
 
 ```{r}
 # Subset the data, adjust manually
-index <- sample_annotation$Group == "Empty" | sample_annotation$Group == "ERAPN2"
+index <- sample_annotation$Group == "PACLITAXEL" | sample_annotation$Group == "VEHICLE"
 sample_annotation_subset <- sample_annotation[index, ]
+# mtx_subset <- mtx[rownames(mtx) %in% signature$genes, colnames(mtx) %in% sample_annotation_subset$Sample]
 mtx_subset <- mtx[rownames(mtx) %in% res_subset$genes, colnames(mtx) %in% sample_annotation_subset$Sample]
-rownames(mtx_subset) <- res_subset$symbol[match(rownames(mtx_subset), res_subset$genes)]
+# rownames(mtx_subset) <- res_subset$symbol[match(rownames(mtx_subset), res_subset$genes)]
 all.equal(sample_annotation_subset$Sample, colnames(mtx_subset))
 ```
 
 ## Heatmap
 
-```{r fig.height=10, fig.width=5}
+```{r fig.height=9, fig.width=7}
 # Make group annotation
 annotation_col <- data.frame(Group = sample_annotation_subset$Group)
 rownames(annotation_col) <- sample_annotation_subset$Sample
@@ -97,19 +103,44 @@ pheatmap(mtx_subset, scale = "row", cluster_cols = FALSE, cluster_rows = TRUE, c
 ## EnhancedVolcano
 
 ```{r fig.height=8, fig.width=7}
-res <- read_xlsx(fileName_rna1)
-rownames(res) <- res$symbol
+# res <- read_xlsx(fileName_rna1)
+# rownames(res) <- res$symbol
 # dev.off()
 # pdf("results/Figure_volcano.pdf", width = 7, height = 7)
 EnhancedVolcano(res,
-    lab = rownames(res),
+    lab = res$genes,
     x = 'logFC',
     y = 'PValue',
-    pCutoff = 0.018,
+    FCcutoff = 0.4,
+    pCutoff = 0.05,
     ylim = c(0, 7.5),
     labSize = 3)
 # dev.off()
 ```
+
+### Volcano plot
+
+```{r fig.height=8, fig.width=7}
+# BiocManager::install("BioSenior/ggVolcano", update = FALSE)
+library(ggVolcano)
+# use the function -- add_regulate to add a regulate column 
+# to the DEG result data. 
+res$FDR <- as.numeric(res$FDR)
+data <- add_regulate(data = res, log2FC_name = "logFC",
+                     fdr_name = "FDR", log2FC = 1, fdr = 0.3)
+
+
+# plot
+gradual_volcano(data, x = "log2FoldChange", y = "padj",
+          label = "genes", label_number = 45,
+#          fills = c("#53a4cf", "#aec5d1", "white", "#e2ae96", "#cc917c", "#a96d5d", "#91403e"),
+          # fills = col3,
+          fills = c("#9EBCDA", "#8C96C6", "#8C6BB1", "#88419D", "#810F7C", "#4D004B"),
+          colors = "#404950",
+          log2FC_cut = 0, FDR_cut = 1, add_line = FALSE, pointSizeRange = c(2, 2),
+          output = TRUE, filename = "results/volcano_plot.png")
+```
+
 
 ## Boxplots of selected genes
 
@@ -138,15 +169,17 @@ data_summary <- function(data, varname, groupnames){
 ```
 
 
-```{r}
+```{r eval=TRUE}
 
-selected_genes <- c("CBSL", "CCDC78", "EBI3", "DPP4")
+selected_genes <- c("Calcrl", res_subset$genes[1:5])
 # selected_genes <- c()
 # selected_genes <- c("ERAP2", "ERAP1")
 
 
-mtx_to_plot <- mtx_full[mtx_full$symbol %in% selected_genes, c("Empty_1","Empty_2","Empty_3","ERAP2N_1","ERAP2N_2","ERAP2N_3")]
-rownames(mtx_to_plot) <- mtx_full$symbol[match(rownames(mtx_to_plot), mtx_full$ensgene)]
+mtx_to_plot <- mtx[rownames(mtx) %in% selected_genes, colnames(mtx) %in% sample_annotation_subset$Sample]
+# rownames(mtx_subset) <- res_subset$symbol[match(rownames(mtx_subset), res_subset$genes)]
+all.equal(sample_annotation_subset$Sample, colnames(mtx_to_plot))
+
 mtx_to_plot <- data.frame(gene = rownames(mtx_to_plot), mtx_to_plot)
 mtx_to_plot <- melt(mtx_to_plot, id = "gene")
 colnames(mtx_to_plot) <- c("Gene", "Condition", "Log2 TPM")
@@ -163,6 +196,9 @@ ggplot(df2, aes(x=Gene, y=`Log2 TPM`, fill=Condition)) +
            position=position_dodge()) +
   geom_errorbar(aes(ymin=`Log2 TPM`-sd, ymax=`Log2 TPM`+sd), width=.2,
                  position=position_dodge(.9)) +
-  facet_wrap(~ Gene, scales='free')
+  facet_wrap(~ Gene, scales='free') +
+  theme_bw() +
+  scale_fill_manual(values = mycols[2:1], name = "") 
+  # scale_fill_lancet()
 ```
 

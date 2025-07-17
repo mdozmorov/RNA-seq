@@ -29,10 +29,10 @@ library(openxlsx)
 
 ```{r settings}
 # Working directory
-data_dir       <- "/Users/mdozmorov/Documents/Work/GitHub/RNA-seq" 
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Swadesh/2023-05-29.RNA-seq" 
 
 # Differentially expressed genes, used to create ranked list
-fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") 
+fileName_rna   <- file.path(data_dir, "results/DEGs_1.xlsx") 
 degs_sheet     <- "Analysis" # Which worksheet contains differentially expressed genes
 
 # List of KEGG pathways

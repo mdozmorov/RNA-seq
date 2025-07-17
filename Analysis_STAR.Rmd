@@ -1,6 +1,6 @@
 ---
-bibliography: /Users/mdozmorov/Documents/Work/presentations/Templates/manuscript_template/references/references_MD.bib
-csl: /Users/mdozmorov/Documents/Work/presentations/Templates/manuscript_template/styles.ref/genomebiology.csl
+bibliography: /Users/mdozmorov/Documents/Work/GitHub/MDtemplate/inst/extdata/references/references_MD.bib
+csl: /Users/mdozmorov/Documents/Work/GitHub/MDtemplate/inst/extdata/styles.ref/genomebiology.csl
 output:
   pdf_document:
     toc: no
@@ -40,6 +40,7 @@ library(ggrepel)
 library(reshape2)
 library(plotly)
 library(dplyr)
+library(readr)
 library(reshape2)
 library(MDmisc)
 library(heatmaply)
@@ -49,7 +50,7 @@ library(ggplot2)
 library(pheatmap)
 # source("https://raw.githubusercontent.com/mdozmorov/enrichR/master/R/api_wrapper.R")
 library(enrichR) # install.packages("enrichR")
-source("utils.R")   # Helper functions
+source("/Users/mdozmorov/Documents/Work/GitHub/RNA-seq/utils.R")   # Helper functions
 library(annotables) # devtools::install_github("stephenturner/annotables") Annotations of Ensembl IDs
 library("ggsci")
 library(scales)
@@ -60,9 +61,10 @@ mycols = pal_lancet("lanonc")(8)
 # Settings
 
 ```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Sarkar/2021-04.RNA-seq/" # Working directory
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Sarkar/2022-03.RNA-seq/" # Working directory
 fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
 fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
+if (!dir.exists(file.path(data_dir, "results"))) dir.create(file.path(data_dir, "results"))
 p_val_cutoff   <- 0.05 # Regular p-value cutoff
 p_adj_cutoff   <- 0.3 # FDR cutoff
 nplot          <- 50 # How many genes to plot on a heatmap
@@ -89,6 +91,7 @@ col3 <- colorRampPalette(c('blue', 'white', 'red'))(20)
 # col3 <- colorRampPalette(c('blue', 'gray', 'yellow'))(20)
 # col3 <- colorRampPalette(c('green', 'black', 'red'))(20)
 # col3 <- colorRamps::green2red(n = 20)
+col3 <- RColorBrewer::brewer.pal(20, "RdBu")
 ```
 
 ```{r}
@@ -139,26 +142,29 @@ all.symbol <- unique(gene_annotations$symbol)
 # VLI11_C_S62_L007_R1_001.txt.gz,C
 # VLI11_C_S62_L008_R1_001.txt.gz,C
 
-sample_annotation <- read.csv(paste0(data_dir, "data/sample_annotation.csv"))
+sample_annotation <- read.csv(file.path(data_dir, "data/sample_annotation.csv"))
 sample_annotation$Sample <- make.names(sample_annotation$Sample)
-sample_annotation$Sample <- sub(".ReadsPerGene.out.tab.gz", "", sample_annotation$Sample) # For STAR files
+sample_annotation$Sample <- sub("_bwa.txt.gz", "", sample_annotation$Sample) # For STAR files
 sample_annotation <- sample_annotation[order(sample_annotation$Sample), ]
 # Explicitly make factors. Manually adjust for all columns in the sample annotation file
 sample_annotation$Group   <- factor(sample_annotation$Group)
 ```
 
-# Load data (STAR)
+# Load data
 
-```{r multiFCfile, eval=TRUE, cache=TRUE}
+## STAR
+
+```{r eval=FALSE, cache=TRUE}
 # Strandedness column selection
 # https://chipster.csc.fi/manual/library-type-summary.html 
-column_star <- 4 # counts for the 2nd read strand aligned with RNA (Option "-s reverse" and "library-type fr-firststrand")
+column_star <- 2 # counts for the 2nd read strand aligned with RNA (Option "-s reverse" and "library-type fr-firststrand")
 counts   <- cbind() # Count matrix
 count_colnames <- c()     # Count matrix column names
-files_counts <- list.files(path = paste0(data_dir, "02_STAR-align/"), pattern = "*.tab.gz")
+files_counts <- list.files(path = file.path(data_dir, "02_STAR-align/"), pattern = "*.tab.gz")
 for (f in files_counts) {
-  count_data <- read.table(paste0(data_dir, "02_STAR-align/", f), sep = "\t", header = FALSE)
-  # sapply(count_data[5:row(count_data), 2:ncol(count_data)], sum) # Check strandedness, which column has the maximum number, change column_star above
+  count_data <- read.table(file.path(data_dir, "02_STAR-align/", f), sep = "\t", header = FALSE)
+  count_data <- count_data[!grepl("^N_", count_data$V1), ]
+  # sapply(count_data[5:row(count_data), 2:ncol(count_data)], sum) %>% which.max() # Check strandedness, which column has the maximum number, change column_star above
   counts <- cbind(counts, count_data[, column_star]) # Select the right strandedness column
   count_colnames <- c(count_colnames, sub(".ReadsPerGene.out.tab.gz", "", f))
 }
@@ -179,13 +185,38 @@ if (human_analysis) {
 all.equal(sample_annotation$Sample, colnames(counts)[2:ncol(counts)])
 ```
 
+## featureCounts
+
+```{r eval=TRUE, cache=TRUE}
+column_star <- 7 # Always 7 for feature Counts
+counts   <- cbind() # Count matrix
+count_colnames <- c()     # Count matrix column names
+files_counts <- list.files(path = file.path(data_dir, "data/03_featureCounts_bwa_trimmed"), pattern = "*.txt.gz", full.names = TRUE)
+for (f in files_counts) {
+  count_data <- read_tsv(file = f, skip = 1)
+  counts <- cbind(counts, count_data[, column_star, drop = TRUE]) # Select the right strandedness column
+  count_colnames <- c(count_colnames, sub("_bwa.txt.gz", "", basename(f)))
+}
+# Add columns
+colnames(counts) <- count_colnames
+counts <- data.frame(Geneid = count_data[, 1], counts[, order(colnames(counts))])
+# Ensembl IDs are in the form "ENSG00000225630.1". We need to remove the last part with dot
+counts$Geneid <- sapply(counts$Geneid, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
+
+# Check is sample annotations anc QC columns match
+all.equal(sample_annotation$Sample, colnames(counts)[2:ncol(counts)])
+# Save gene length
+gene_length <- data.frame(Geneid = counts$Geneid, Length = count_data$Length)
+```
+
+
 ## Save TPM matrix
 
 The expression of all genes across all conditions as log2-transformed TPM values (read, gene expression) is saved in the `r fileName_tpm` file. [More about TPM](https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/). Use to look up any gene and compare its expression across conditions. 
 
 ```{r}
 if (saveTPM & !file.exists(fileName_tpm)) {
-  source("calcTPM.R")
+  source("/Users/mdozmorov/Documents/Work/GitHub/RNA-seq/calcTPM.R")
   counts_for_tpm <- inner_join(counts, gene_length, by = c("Geneid")) # TPM can be calculated only for genes having length
   TPM <- calcTPM(data = counts_for_tpm[, !(colnames(counts) %in% c("Geneid", "Length"))], feature_length = counts_for_tpm[, c("Geneid", "Length")])
   TPM <- log2(TPM + 1) # log2 transform
@@ -313,12 +344,12 @@ counts <- data.frame(Geneid = Geneid, counts[, index])
 
 ## Analysis 1
 
-"AlbMda9" vs. "WT" comparison, so positive logFC correspond to genes UP in "AlbMda9"
+"OO_LPS" vs. "OO_Control" comparison, so positive logFC correspond to genes UP in "OO_LPS"
 
 ```{r}
 # Define reference and treatment groups
-group_ref <- "WT"
-group_trt <- "AlbMda9"
+group_ref <- "OO_Control"
+group_trt <- "OO_LPS"
 # Define analysis ID
 analysis_ID <- paste0("1.", group_trt, "_vs_", group_ref)
 # Subset the data, adjust manually
@@ -356,7 +387,14 @@ fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
 lrt <- glmLRT(fit, coef = 2)
 
-res.full <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = analysis_ID, print_to_file = FALSE)
+res.full <- p.vals(object = lrt, p_adj_cutoff = 1, comparison = analysis_ID, print_to_file = FALSE)
+if (nrow(res.full[res.full$FDR < p_adj_cutoff, ]) > ntable) {
+  print(paste("Filtered by FDR", p_adj_cutoff))
+  res <- res.full[res.full$FDR < p_adj_cutoff, ]
+} else {
+  print(paste("Filtered by p-value", p_val_cutoff))
+  res <- res.full[res.full$PValue < p_val_cutoff, ]
+}
 
 # res <- p.vals(object = lrt, p_adj_cutoff = 0.1, comparison = "DEGs_1", print_to_file = FALSE)
 # res$logFC <- signif(res$logFC)
@@ -367,9 +405,25 @@ res.full <- p.vals(object = lrt, p_adj_cutoff = p_adj_cutoff, comparison = analy
 # datatable(res)
 ```
 
-Total number of differentially expressed genes: `r nrow(res.full)`, `r nrow(res.full[ res.full$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res.full[ res.full$logFC < 0, , drop = FALSE])` are downregulated.
+Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated.
+
 ```{r}
-res <- res.full[ res.full$biotype == "protein_coding" & !is.na(res.full$symbol), ]
+print(paste("Total:", nrow(res)))
+print(paste("UP:", nrow(res[res$logFC > 0, ])))
+biotype_summary_up <- as.data.frame(table(res$biotype[res$logFC > 0]))
+biotype_summary_up$Freq <- biotype_summary_up$Freq * 100 / sum(biotype_summary_up$Freq)
+print(paste("DN:", nrow(res[res$logFC < 0, ])))
+biotype_summary_dn <- as.data.frame(table(res$biotype[res$logFC < 0]))
+biotype_summary_dn$Freq <- biotype_summary_dn$Freq * 100 / sum(biotype_summary_dn$Freq)
+biotype_summary <- full_join(biotype_summary_up, biotype_summary_dn, by = "Var1", suffix = c(".UP", ".DN"))
+biotype_summary <- biotype_summary[order(biotype_summary$Freq.UP, decreasing = TRUE), ]
+biotype_summary <- round_df(biotype_summary)
+rownames(biotype_summary) <- NULL
+pander(biotype_summary)
+```
+
+```{r}
+res <- res[ res$biotype == "protein_coding" & !is.na(res$symbol), ]
 ```
 
 Stats after selecting for protein-coding genes only.  
@@ -400,6 +454,27 @@ if (nrow(res) > 0) {
 ```{r fig.height=12}
 if (nrow(res) > 0)
   genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = NA, nplot = nplot, comparison = analysis_ID, clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+```
+
+### Volcano plot
+
+```{r}
+# BiocManager::install("BioSenior/ggVolcano", update = FALSE)
+library(ggVolcano)
+# use the function -- add_regulate to add a regulate column 
+# to the DEG result data. 
+res$FDR <- as.numeric(res$FDR)
+data <- add_regulate(data = res, log2FC_name = "logFC",
+                     fdr_name = "FDR", log2FC = 1, fdr = 0.3)
+
+
+# plot
+gradual_volcano(data, x = "log2FoldChange", y = "padj",
+          label = "symbol", label_number = 10,
+          fills = c("#53a4cf", "#aec5d1", "white", "#e2ae96", "#cc917c", "#a96d5d", "#91403e"),
+          colors = "#404950",
+          log2FC_cut = 0, FDR_cut = 1, add_line = FALSE, pointSizeRange = c(2, 2),
+          output = TRUE, filename = "results/volcano_plot.png")
 ```
 
 ### KEGG pathway GSEA analysis 
@@ -512,10 +587,8 @@ if (class(res.kegg) == "data.frame") {
 
 ```{r}
 # Save the results into a list, for future saving to Excel
-x1 <- list(res.full[res.full$biotype == "protein_coding" & !is.na(res.full$biotype), ],
-           res.full[res.full$biotype == "lincRNA" & !is.na(res.full$biotype), ],
-           res.full[!(res.full$biotype %in% c("protein_coding", "lincRNA")) & !is.na(res.full$biotype), ])
-names(x1) <- c("1.protein-coding", "1.lincRNA", "1.other")
+x1 <- list(res.full)
+names(x1) <- c("1.DEGs")
 # If something is significant, add KEGG results
 if (class(res.kegg) == "data.frame") {
   res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix

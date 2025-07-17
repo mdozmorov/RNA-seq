@@ -63,9 +63,9 @@ mycols = pal_lancet("lanonc")(8)
 # Settings
 
 ```{r}
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Tony/2023-10.RNA-seq" # Working directory
-fileNameIn1 <- file.path(data_dir, "OUT_full/star_rsem/rsem.merged.gene_counts.tsv") # Counts
-fileNameIn2 <- file.path(data_dir, "OUT_full/star_rsem/rsem.merged.gene_tpm.tsv") # TPM
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Shawn_Wang/2025-07.RNA-seq" # Working directory
+fileNameIn1 <- file.path(data_dir, "OUT_mm39/star_rsem/rsem.merged.gene_counts.tsv") # Counts
+fileNameIn2 <- file.path(data_dir, "OUT_mm39/star_rsem/rsem.merged.gene_tpm.tsv") # TPM
 
 fileName_rna   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
 fileName_tpm   <- file.path(data_dir, "results/TPM.xlsx")  # File to save TPM values
@@ -101,14 +101,15 @@ col3 <- RColorBrewer::brewer.pal(20, "RdBu")
 
 ```{r}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
-human_analysis <- TRUE
-mouse_analysis <- FALSE
+human_analysis <- FALSE
+mouse_analysis <- TRUE
+
+selected_annotations <- c("ensgene", "symbol", "biotype", "description")
 
 # Prepate gene annotations, remove non-canonical chromosome names
 if (human_analysis) {
   library(org.Hs.eg.db)
   OrgDb = "org.Hs.eg.db"; species = "hsa"
-  selected_annotations <- c("symbol", "biotype", "description")
   gene_annotations <- grch38[ !(grepl("_", grch38$chr) | grepl("GL", grch38$chr)), selected_annotations]
   gene_annotations <- gene_annotations[!duplicated(gene_annotations[, selected_annotations]), selected_annotations]
   # Remove empty gene symbol records
@@ -123,7 +124,7 @@ if (human_analysis) {
 if (mouse_analysis) {
   library(org.Mm.eg.db)
   OrgDb = "org.Mm.eg.db"; species = "mmu"
-  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), c("symbol", "biotype", "description")]
+  gene_annotations <- grcm38[ !(grepl("_", grcm38$chr) | grepl("GL", grcm38$chr)), selected_annotations]
   gene_annotations <- gene_annotations[ !duplicated(gene_annotations) & !is.na(gene_annotations$symbol) & gene_annotations$description != "", ]
   KEGG <- "KEGG_2019_Mouse"
   # Gene length for TPM calculations
@@ -149,9 +150,9 @@ all.symbol <- unique(gene_annotations$symbol)
 
 sample_annotation <- read.csv(file.path(data_dir, "samplesheet.csv"))
 
-sample_annotation$Sample <- basename(sample_annotation$fastq_1) %>% sub("_S[0-9]+_R1_001.fastq.gz", "", .) %>% make.names()
+sample_annotation$Sample <- basename(sample_annotation$fastq_1) %>% sub("_[12].fastq.gz", "", .) %>% make.names()
 # Explicitly make factors. Manually adjust for all columns in the sample annotation file
-sample_annotation$Group   <- factor(sample_annotation$sample %>% sub("[0-9]", "", .))
+sample_annotation$Group   <- factor(sample_annotation$Sample %>% sub("[0-9]", "", .))
 ```
 
 # Load data
@@ -161,7 +162,10 @@ sample_annotation$Group   <- factor(sample_annotation$sample %>% sub("[0-9]", ""
 ```{r eval=TRUE, cache=TRUE}
 count_data <- read_tsv(fileNameIn1)
 counts <- data.frame(Geneid = count_data[, 1] %>% unlist(), count_data[, colnames(count_data)[!(colnames(count_data) %in% c("gene_id", "transcript_id(s)"))]])
-# Check is sample annotations anc QC columns match
+# Remove transcript versions
+counts$Geneid <- sapply(counts$Geneid, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
+# Check is sample annotations and QC columns match
+sample_annotation <- sample_annotation[match(colnames(counts)[2:ncol(counts)], sample_annotation$Sample), ]
 all.equal(sample_annotation$Sample, colnames(counts)[2:ncol(counts)])
 ```
 
@@ -267,7 +271,7 @@ Samples are heterogeneous.
 
 ## Exclude selected samples, if needed
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 samples_to_exclude <- c("MYCi975.2")
 index <- !(sample_annotation$Sample %in% samples_to_exclude)
 sample_annotation <- sample_annotation[index, ]
@@ -282,7 +286,7 @@ all.equal(sample_annotation$Sample, colnames(counts)[2:ncol(counts)])
 ```{r}
 counts_average <- data.frame(Geneid = counts$Geneid, Mean = rowMeans(counts[, colnames(counts) != "Geneid"]))
 counts_average <- counts_average[order(counts_average$Mean, decreasing = TRUE), ]
-counts_average <- left_join(counts_average, gene_annotations[, c("symbol", "description")], by = c("Geneid" = "symbol"))
+counts_average <- left_join(counts_average, gene_annotations[, c("symbol", "ensgene", "description")], by = c("Geneid" = "ensgene"))
 ```
 
 ```{r}
@@ -313,14 +317,14 @@ Legend for gene lists: "Geneid", "symbol", "description" - gene annotations; "Le
 Functional enrichment analysis Legend: "database" - source of functional annotations, "category" - name of functional annotation,  "pval" - unadjusted enrichment p-value,  "qval" - FDR-adjusted p-value,  "genes" - comma-separated differentially expressed genes enriched in a corresponding functional category,  "direction" - UP/DN, an indicator whether genes are up- or downregulated.-->
 
 
-## Analysis 1, HSRNAtr vs HSRNAun
+## Analysis 1, KO vs WT
 
-"HSRNAtr" vs. "HSRNAun" comparison, so positive logFC correspond to genes UP in "HSRNAtr"
+"KO" vs. "WT" comparison, so positive logFC correspond to genes UP in "KO"
 
 ```{r}
 # Define reference and treatment groups
-group_ref <- "HSRNAun"
-group_trt <- "HSRNAtr"
+group_ref <- "WT"
+group_trt <- "KO"
 # Define analysis ID
 analysis_ID <- paste0("1.", group_trt, "_vs_", group_ref)
 # Subset the data, adjust manually
@@ -358,7 +362,7 @@ fit <- glmFit(edgeR.dgelist, design)
 # Individual comparisons
 lrt <- glmLRT(fit, coef = 2)
 
-res.full <- p.vals(object = lrt, p_adj_cutoff = 1, comparison = analysis_ID, print_to_file = FALSE, merge_by = "symbol")
+res.full <- p.vals(object = lrt, p_adj_cutoff = 1, comparison = analysis_ID, print_to_file = FALSE, merge_by = "ensgene")
 if (nrow(res.full[res.full$FDR < p_adj_cutoff, ]) > ntable) {
   print(paste("Filtered by FDR", p_adj_cutoff))
   res <- res.full[res.full$FDR < p_adj_cutoff, ]
@@ -376,7 +380,7 @@ if (nrow(res.full[res.full$FDR < p_adj_cutoff, ]) > ntable) {
 # datatable(res)
 ```
 
-Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated.
+Total number of differentially expressed genes: `r nrow(res)`, `r nrow(res[ res$logFC > 0, , drop = FALSE])` are upregulated, `r nrow(res[ res$logFC < 0, , drop = FALSE])` are downregulated. Check the following for proportion changes.
 
 ```{r}
 print(paste("Total:", nrow(res)))
@@ -416,7 +420,7 @@ Y-axis - expression on log2-scale. Note the range - values > 5 indicate medium e
 ```{r}
 if (nrow(res) > 0) {
   selected_genes = unique(res$genes[!is.na(res$genes)])
-  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c(group_trt, group_ref))
+  genes_to_boxplot(selected_genes = selected_genes[1:min(length(selected_genes), nbox)], subset_by = c(group_trt, group_ref), merge_by = "ensgene")
 }
 ```
 
@@ -424,7 +428,7 @@ if (nrow(res) > 0) {
 
 ```{r fig.height=12}
 if (nrow(res) > 0)
-  genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = c(group_trt, group_ref), nplot = nplot, comparison = analysis_ID, clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE)
+  genes_to_heatmap(object = res, edgeR.dgelist = edgeR.dgelist, subset_by = c(group_trt, group_ref), nplot = nplot, comparison = analysis_ID, clustmethod = "ward", width = 6, height = 8, print_to_file = FALSE, merge_by = "ensgene")
 ```
 
 ### Volcano plot
@@ -560,7 +564,7 @@ if (class(res.kegg) == "data.frame") {
 ```{r}
 # Save the results into a list, for future saving to Excel
 x1 <- list(res.full)
-names(x1) <- c("1.DEGs")
+names(x1) <- analysis_ID
 # If something is significant, add KEGG results
 if (class(res.kegg) == "data.frame") {
   res.kegg <- res.kegg[, !grepl("Old", colnames(res.kegg))] # Remove columns having "Old" prefix

@@ -36,10 +36,10 @@ library(msigdbr)
 
 ```{r settings}
 # Data
-data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Eun_Lee/2020-12.EunLee_Novogene/" # Working directory
-fileNameIn1   <- file.path(data_dir, "results/DEGs.xlsx") # File to save all results of differential expression analysis
-degs_sheet     <- "1.protein-coding" # Which worksheet contains differentially expressed genes
-fileNameOut1 <- file.path(data_dir, "results/GSEA_DEGs.xlsx")
+data_dir       <- "/Users/mdozmorov/Documents/Data/VCU_work/Tony/2023-10.RNA-seq" # Working directory
+fileNameIn1   <- file.path(data_dir, paste0("results/DEGs.xlsx")) # File to save all results of differential expression analysis
+degs_sheet     <- "1.DEGs" # Which worksheet contains differentially expressed genes
+fileNameOut1 <- file.path(data_dir, paste0("results/GSEA_DEGs_", degs_sheet, ".xlsx"))
 # Create output folder, if not exists
 if (!dir.exists(file.path(data_dir, "results"))) dir.create(file.path(data_dir, "results"))
 
@@ -56,8 +56,8 @@ msigdb_all     <- FALSE # Use all MSigDb categories (TRUE), or c("C2", "C5", "H"
 
 ```{r}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
-human_analysis <- TRUE
-mouse_analysis <- FALSE
+human_analysis <- FALSE
+mouse_analysis <- TRUE
 
 # Prepate gene annotations, remove non-canonical chromosome names
 if (human_analysis) {
@@ -88,12 +88,12 @@ all.symbol <- unique(gene_annotations$symbol)
 
 ```{r}
 mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
-res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.adj = mtx$FDR)
-res <- res[ order(res$p.adj, decreasing = FALSE), ]
+res <- data.frame(symbol = mtx$genes, logFC = mtx$logFC, p.val = mtx$PValue, p.adj = mtx$FDR)
+res <- res[ order(res$p.val, decreasing = FALSE), ]
 # fix gene names 
-current_map <- getCurrentHumanMap()
-genes_checked <- checkGeneSymbols(res$symbol, map = current_map)
-res$symbol <- genes_checked$Suggested.Symbol
+# current_map <- getCurrentHumanMap()
+# genes_checked <- checkGeneSymbols(res$symbol, map = current_map)
+# res$symbol <- genes_checked$Suggested.Symbol
 ```
 
 # Overview
@@ -165,10 +165,10 @@ websiteLive <- TRUE # Check if EnrichR is up
   if (is.null(dbs)) websiteLive <- FALSE
   if(websiteLive) {
     # Subset the number of DEGs for KEGG analysis to the maximum
-    if (nrow(res) > max_kegg_genes) {
+    if (nrow(res[res$p.adj < FDR_cutoff, ]) > max_kegg_genes) {
       degs_subset <- res[1:max_kegg_genes, ]
     } else {
-      degs_subset <- res
+      degs_subset <- res[res$p.adj < FDR_cutoff, ]
     }
     # Get list of up- and downregulated genes
     up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
@@ -384,7 +384,7 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       # separate the rows by splitting by the delimiter and expanding the rows 
       separate_rows(core_enrichment, convert = TRUE, sep = "/") %>% 
       # group the genes by their other columns to keep them 
-      group_by(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, qvalues,
+      group_by(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, qvalue,
                rank, leading_edge) %>%
       # sort the genes for each term 
       arrange(core_enrichment) %>% 
