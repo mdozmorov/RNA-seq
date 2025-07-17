@@ -39,26 +39,32 @@ library(ggridges)
 
 ```{r data}
 # Input settings
-dir_data <- "/Users/mdozmorov/Documents/Work/VCU_work/Tony/Sumoylation"
-fileNameIn <- file.path(dir_data, "data/SKNSHMBvsSKNSHMA (1).xlsx")
+dir_data <- "/Users/mdozmorov/Documents/Data/GoogleDrive/HiC_files/results/RNA-seq/2021.11.19_UCD52_DEG"
+fileNameIn <- file.path(dir_data, "results/04.06.22_DEGs_edgeR_UCD52PR_CR_annotated.xlsx")
+sheet_name <- "DEGs"
 # oncoEnrichR settings, depending on input gene IDs
 query_id_type = "ensembl_gene"
 # Output settings
-analysis_name <- "SKNSHMBvsSKNSHMA"
-dir_results   <- "/Users/mdozmorov/Documents/Work/GitHub/RNA-seq"
-fileNameOutUP1  <- file.path(dir_results, "results", paste0("oncoEnrichR_", analysis_name, "_UP.html"))
-fileNameOutUP2  <- file.path(dir_results, "results", paste0("oncoEnrichR_", analysis_name, "._UP.xlsx"))
-fileNameOutDN1  <- file.path(dir_results, "results", paste0("oncoEnrichR_", analysis_name, "_DN.html"))
-fileNameOutDN2  <- file.path(dir_results, "results", paste0("oncoEnrichR_", analysis_name, "._DN.xlsx"))
+analysis_name <- "04.06.22_DEGs"
+fileNameOutUP1  <- file.path(dir_data, "results", paste0("oncoEnrichR_", analysis_name, "_UP.html"))
+fileNameOutUP2  <- file.path(dir_data, "results", paste0("oncoEnrichR_", analysis_name, "._UP.xlsx"))
+fileNameOutDN1  <- file.path(dir_data, "results", paste0("oncoEnrichR_", analysis_name, "_DN.html"))
+fileNameOutDN2  <- file.path(dir_data, "results", paste0("oncoEnrichR_", analysis_name, "._DN.xlsx"))
 # Create "results" folder, if does not exist
-dir.create(file.path(dir_results, "results"))
+if (!dir.exists(file.path(dir_data, "results"))) dir.create(file.path(dir_data, "results"))
+# Create "results" folder, if does not exist
+if (!dir.exists(file.path(dir_data, "oeDBcache"))) dir.create(file.path(dir_data, "oeDBcache"))
+```
 
+# Load data
+
+```{r}
 # Read the data
-mtx <- read_xlsx(fileNameIn)
+mtx <- read_xlsx(fileNameIn, sheet = sheet_name)
 # Create a data frame for downstream processing - adjust column names
-mtx <- data.frame(Gene = mtx$gene_id,
-                  UPDN = ifelse(mtx$log2FoldChange > 0, "Upregulated", "Downregulated"),
-                  FDR  = mtx$padj)
+mtx <- data.frame(Gene = mtx$ensgenes,
+                  UPDN = ifelse(mtx$logFC > 0, "Upregulated", "Downregulated"),
+                  FDR  = mtx$FDR)
 # Sort by FDR
 mtx <- mtx[order(mtx$FDR), ]
 # Exploratory data analysis
@@ -88,11 +94,12 @@ query_DN <- query_DN[1:min(max_genes, length(query_DN))]
 
 ```{r}
 # See https://github.com/sigven/oncoEnrichR
-oncoEnrichR_wrapper <- function(query = query_UP, 
+oncoEnrichR_wrapper <- function(query = query_UP, oeDB = oeDB,
                                 query_id_type = query_id_type, 
                                 project_title = analysis_name) {
   onco_enrich(
     query,
+    oeDB,
     query_id_type = query_id_type,
     ignore_id_err = TRUE,
     project_title = project_title,
@@ -127,14 +134,18 @@ oncoEnrichR_wrapper <- function(query = query_UP,
     show_complex = TRUE)
 }
 
+oeDB <- oncoEnrichR::load_db(cache_dir = file.path(dir_data, "oeDBcache"))
+```
+
+```{r}
 # Analysis of upregulated genes
-report_UP <- oncoEnrichR_wrapper(query = query_UP, query_id_type = query_id_type, project_title = analysis_name)
-oncoEnrichR::write(report = report_UP, file = fileNameOutUP1, format = "html")
-oncoEnrichR::write(report = report_UP, file = fileNameOutUP2, format = "excel")
+report_UP <- oncoEnrichR_wrapper(query = query_UP, oeDB = oeDB, query_id_type = query_id_type, project_title = analysis_name)
+oncoEnrichR::write(report = report_UP, file = fileNameOutUP1, format = "html", overwrite = TRUE)
+oncoEnrichR::write(report = report_UP, file = fileNameOutUP2, format = "excel", overwrite = TRUE)
 # Analysis of upregulated genes
-report_DN <- oncoEnrichR_wrapper(query = query_DN, query_id_type = query_id_type, project_title = analysis_name)
-oncoEnrichR::write(report = report_DN, file = fileNameOutDN1, format = "html")
-oncoEnrichR::write(report = report_DN, file = fileNameOutDN2, format = "excel")
+report_DN <- oncoEnrichR_wrapper(query = query_DN, oeDB = oeDB, query_id_type = query_id_type, project_title = analysis_name)
+oncoEnrichR::write(report = report_DN, file = fileNameOutDN1, format = "html", overwrite = TRUE)
+oncoEnrichR::write(report = report_DN, file = fileNameOutDN2, format = "excel", overwrite = TRUE)
 
 print("Done. Results are in")
 print(fileNameOutUP1)
