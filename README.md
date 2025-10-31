@@ -118,3 +118,8 @@ Dedicated repository with detailed instructions: [mdozmorov/CaSpER_pipeline](htt
 - DESeq results to pathways in 60 Seconds with the fgsea package, https://stephenturner.github.io/deseq-to-fgsea/
 
 - [A Shiny app for visualizing DESeq2 results](https://jokergoo.github.io/InteractiveComplexHeatmap/articles/deseq2_app.html) by Zuguang Gu. [Tweet](https://twitter.com/jokergoo_gu/status/1373013068821725189?s=20)
+
+
+**Disclaimer**
+
+The code in this repository is provided "as is" without any warranty of any kind, express or implied. The author(s) of this code make no guarantees and assume no liability for the accuracy, completeness, or usefulness of this code, or for any damages that may arise from its use. By using this code, you agree to do so at your own risk.
