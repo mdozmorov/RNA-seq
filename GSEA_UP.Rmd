@@ -33,6 +33,7 @@ library(HGNChelper) # for correcting gene names
 library(tidyverse)
 library(msigdbr)
 library(nichenetr)
+library(enrichplot)
 ```
 
 ```{r settings}
@@ -52,7 +53,7 @@ up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulate
 p_val_cutoff   <- 0.05 # Regular p-value cutoff
 FDR_cutoff     <- 0.3# FDR cutoff for DEGs
 msigdb_all     <- FALSE # Use all MSigDb categories (TRUE), or c("C2", "C5", "H") (FALSE)
-fileNameOut1 <- file.path(data_dir, paste0("results/GSEA_", make.names(degs_sheet), ".xlsx"))
+fileNameOut1 <- file.path(data_dir, paste0("results/GSEA2_", make.names(degs_sheet), ".xlsx"))
 # Create output folder, if not exists
 if (!dir.exists(file.path(data_dir, "results"))) dir.create(file.path(data_dir, "results"))
 
@@ -62,9 +63,154 @@ min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
 max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
 nperm          <- 1000 # Number of permutations (for GSEA)
+num_gseaplots  <- 3 # Number of GSEA plots to plot
+```
+```{r}
+# Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
+human_analysis <- FALSE
+mouse_analysis <- TRUE
+
+# Bioconductor setup (if needed):
+# if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+# BiocManager::install(c("AnnotationHub", "ensembldb", "org.Hs.eg.db", "org.Mm.eg.db"))
+
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(ensembldb)
+  library(AnnotationDbi)
+  library(dplyr)
+  library(tibble)
+})
+
+# Helper to get the latest EnsDb for a species/build from AnnotationHub
+get_latest_EnsDb <- function(species, genome) {
+  ah <- AnnotationHub::AnnotationHub()
+  q <- AnnotationHub::query(ah, c("EnsDb", species, genome))
+  if (length(q) == 0L) stop("No EnsDb found for: ", species, " ", genome)
+  q[[which.max(as.Date(mcols(q)$rdatadateadded))]]
+}
+
+# Helper to build gene annotations and lengths
+build_gene_data <- function(ensdb, orgdb, canonical_chrs, species_code, kegg_set, msigdbr_org) {
+  # Pull genes with required columns from EnsDb
+  g <- genes(
+    ensdb,
+    columns = c("gene_id", "gene_name", "gene_biotype", "seq_name",
+                "gene_seq_start", "gene_seq_end")
+  )
+  df <- as_tibble(g) %>%
+    transmute(
+      ensgene = gene_id,
+      symbol = gene_name,
+      biotype = gene_biotype,
+      chr = as.character(seqnames),
+      start = as.integer(start),
+      end = as.integer(end)
+    ) %>%
+    dplyr::filter(chr %in% canonical_chrs)
+
+  # Map description (GENENAME) from org.*.eg.db using ENSEMBL keys
+  desc_map <- AnnotationDbi::select(
+    orgdb,
+    keys = unique(df$ensgene),
+    keytype = "ENSEMBL",
+    columns = c("GENENAME")
+  ) %>%
+    dplyr::rename(ensgene = ENSEMBL, description = GENENAME)
+
+  df <- df %>%
+    left_join(desc_map, by = "ensgene")
+
+  # Final gene_annotations: protein_coding, non-NA symbol/description
+  gene_annotations <- df %>%
+    # dplyr::filter(
+      # biotype == "protein_coding",
+      # !is.na(symbol),
+      # !is.na(description),
+      # description != ""
+    # ) %>%
+    distinct(ensgene, symbol, biotype, description, .keep_all = FALSE)
+
+  # Gene length as gene span (end - start)
+  gene_length <- df %>%
+    transmute(Geneid = ensgene, Length = end - start) %>%
+    distinct()
+
+  # Background symbols
+  all.symbol <- unique(gene_annotations$symbol)
+
+  list(
+    gene_annotations = gene_annotations,
+    gene_length = gene_length,
+    all.symbol = all.symbol,
+    OrgDb = orgdb,
+    species = species_code,
+    KEGG = kegg_set,
+    msigdbr_org = msigdbr_org
+  )
+}
+
+# Flags controlling which species to process
+# Set these as needed:
+# human_analysis <- TRUE
+# mouse_analysis <- FALSE
+
+if (exists("human_analysis") && isTRUE(human_analysis)) {
+  suppressPackageStartupMessages(library(org.Hs.eg.db))
+
+  # EnsDb for human GRCh38 (change to "GRCh37" if you need that build)
+  edb_hs <- get_latest_EnsDb("Homo sapiens", "GRCh38")
+
+  human <- build_gene_data(
+    ensdb = edb_hs,
+    orgdb = org.Hs.eg.db,
+    canonical_chrs = c(as.character(1:22), "X", "Y", "MT"),
+    species_code = "hsa",
+    kegg_set = "KEGG_2019_Human",
+    msigdbr_org = "Homo sapiens"
+  )
+
+  gene_annotations <- human$gene_annotations
+  gene_length <- human$gene_length
+  all.symbol <- human$all.symbol
+  OrgDb <- "org.Hs.eg.db"
+  species <- "hsa"
+  KEGG <- human$KEGG
+  msigdbr_org <- human$msigdbr_org
+}
+
+if (exists("mouse_analysis") && isTRUE(mouse_analysis)) {
+  suppressPackageStartupMessages(library(org.Mm.eg.db))
+
+  # EnsDb for mouse GRCm38 (switch to "GRCm39" for the latest)
+  edb_mm <- get_latest_EnsDb("Mus musculus", "GRCm38")
+
+  mouse <- build_gene_data(
+    ensdb = edb_mm,
+    orgdb = org.Mm.eg.db,
+    canonical_chrs = c(as.character(1:19), "X", "Y", "MT"),
+    species_code = "mmu",
+    kegg_set = "KEGG_2019_Mouse",
+    msigdbr_org = "Mus musculus"
+  )
+
+  gene_annotations <- mouse$gene_annotations
+  gene_length <- mouse$gene_length
+  all.symbol <- mouse$all.symbol
+  OrgDb <- "org.Mm.eg.db"
+  species <- "mmu"
+  KEGG <- mouse$KEGG
+  msigdbr_org <- mouse$msigdbr_org
+}
+
+# Result objects:
+# - gene_annotations: tibble with columns ensgene, symbol, biotype, description
+# - gene_length: data.frame/tibble with columns Geneid, Length
+# - all.symbol: unique symbols vector
 ```
 
-```{r}
+
+```{r eval=FALSE}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
 human_analysis <- FALSE
 mouse_analysis <- TRUE
@@ -392,14 +538,14 @@ msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   res.msigdf.all
 }
 # run unranked MSigDb analysis 
-res.msigdb <- msigdb_enrich(dataset = res, p_adj_cutoff = p_adj_cutoff)
+res.msigdb.enrich <- msigdb_enrich(dataset = res, p_adj_cutoff = p_adj_cutoff)
 ```
 
 # GSEA analysis 
 
 ## KEGG
 
-```{r gsea.kegg, eval=TRUE}
+```{r gsea.kegg, eval=FALSE}
 # Function to perform GSEA analysis on KEGG
 gsea_kegg_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   # All DEGs for GSEA
@@ -463,9 +609,69 @@ gsea_kegg_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
 res.kegg.gsea <- gsea_kegg_enrich(res, p_adj_cutoff = p_adj_cutoff)
 ```
 
+```{r gsea.kegg2}
+# Function to perform GSEA analysis on KEGG (returns ego3, the gseaResult object)
+gsea_kegg_enrich <- function(dataset = res, p_adj_cutoff = 0.05) {
+  res.all <- dataset %>%
+    dplyr::group_by(symbol) %>%
+    dplyr::slice_max(order_by = abs(logFC), n = 1, with_ties = FALSE) %>%
+    dplyr::ungroup()
+  eid <- bitr(unique(res.all$symbol), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = OrgDb)
+  res.all <- dplyr::left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+  res.all <- res.all[!is.na(res.all$ENTREZID), ]
+  geneList <- res.all$logFC
+  names(geneList) <- res.all$ENTREZID
+  geneList <- sort(geneList, decreasing = TRUE)
+  set.seed(1)
+  ego3 <- gseKEGG(
+    geneList     = geneList,
+    organism     = species,
+    minGSSize    = 10,
+    pvalueCutoff = 1,
+    verbose      = FALSE
+  )
+  ego3 <- setReadable(ego3, OrgDb = OrgDb, keyType = "ENTREZID")
+  return(ego3)
+}
+
+res.kegg.ego3 <- gsea_kegg_enrich(res, p_adj_cutoff = p_adj_cutoff)
+
+# Function to reformat gseaResult object into processed data frame
+gsea_kegg_results_to_df <- function(ego3, p_adj_cutoff = 0.05) {
+  res.kegg.gsea <- as.data.frame(ego3)
+  if (nrow(res.kegg.gsea) > 0) {
+    res.kegg.gsea <- res.kegg.gsea[, c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")]
+    res.kegg.gsea <- res.kegg.gsea %>%
+      tidyr::separate_rows(core_enrichment, convert = TRUE, sep = "/") %>%
+      dplyr::group_by(ID, Description, NES, pvalue, p.adjust) %>%
+      dplyr::arrange(core_enrichment) %>%
+      dplyr::summarise(core_enrichment = paste(core_enrichment, collapse = "/"), .groups = "drop")
+    res.kegg.gsea <- res.kegg.gsea[order(abs(res.kegg.gsea$NES), decreasing = TRUE), ]
+    res.kegg.gsea <- res.kegg.gsea[res.kegg.gsea$p.adjust < p_adj_cutoff, ]
+    res.kegg.gsea$NES       <- round(res.kegg.gsea$NES, digits = 2)
+    res.kegg.gsea$pvalue    <- formatC(res.kegg.gsea$pvalue, format = "e", digits = 2)
+    res.kegg.gsea$p.adjust  <- formatC(res.kegg.gsea$p.adjust, format = "e", digits = 2)
+    rownames(res.kegg.gsea) <- NULL
+  } else {
+    res.kegg.gsea <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 6))
+    colnames(res.kegg.gsea) <- c("ID", "Description", "NES", "pvalue", "p.adjust", "core_enrichment")
+  }
+  return(res.kegg.gsea)
+}
+
+res.kegg.gsea <- gsea_kegg_results_to_df(res.kegg.ego3, p_adj_cutoff = p_adj_cutoff)
+
+# Plot the top enriched pathways
+for (i in 1:num_gseaplots) {
+  pathway_id <- res.kegg.gsea$ID[i]
+  pathway_desc <- res.kegg.gsea$Description[i]
+  print(gseaplot2(res.kegg.ego3, geneSetID = pathway_id, title = pathway_desc))
+}
+```
+
 ## MSigDb
 
-```{r gsea.msig, eval=TRUE}
+```{r gsea.msig, eval=FALSE}
 # Function to perform GSEA analysis using MSigDb signatures
 gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
   res.all <- dataset %>%
@@ -531,11 +737,94 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
 res.msigdb <- c(res.msigdb, gsea_msigdb_enrich(res, p_adj_cutoff = p_adj_cutoff))
 ```
 
+```{r gsea.msig2}
+# Function to perform GSEA analysis using MSigDb signatures
+gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = 0.05) {
+  # Preprocess dataset: get the most significant gene per symbol
+  res.all <- dataset %>%
+    dplyr::group_by(symbol) %>%
+    dplyr::slice_max(order_by = abs(logFC), n = 1, with_ties = FALSE) %>%
+    dplyr::ungroup()
+  # Convert gene symbols to entrez IDs
+  eid <- bitr(res.all$symbol, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = OrgDb)
+  res.all <- dplyr::left_join(res.all, eid, by = c("symbol" = "SYMBOL"))
+  res.all <- res.all[!is.na(res.all$ENTREZID), ]
+  # Named gene list
+  geneList <- res.all$logFC
+  names(geneList) <- res.all$ENTREZID
+  geneList <- sort(geneList, decreasing = TRUE)
+  # GSEA for each MSigDB category
+  res.msigdb.all <- list()
+  for (gs_cat in m_df_gs_cat) {
+    m_t2g <- msigdbr(species = msigdbr_org, collection = gs_cat) %>%
+      dplyr::distinct(gs_name, ncbi_gene)
+    em2 <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = p_adj_cutoff)
+    res.msigdb.all[[paste0("GSEA.", gs_cat)]] <- em2
+  }
+  return(res.msigdb.all)
+}
+
+res.msigdb.em2 <- gsea_msigdb_enrich(res, p_adj_cutoff = p_adj_cutoff)
+  
+  
+# Function to reformat a list of GSEA results into a list of data frames
+gsea_msigdb_results_to_df <- function(res.msigdb.all, OrgDb, msigdbr_org) {
+  res.msigdf.all <- list()
+  for (nm in names(res.msigdb.all)) {
+    em2 <- res.msigdb.all[[nm]]
+    # Term to description 
+    res.msigdf.em2 <- NULL
+    if (nrow(em2@result) > 0) {
+      gs_cat <- sub("GSEA.", "", nm)
+      m_t2d <- msigdbr(species = msigdbr_org, collection = gs_cat) %>%
+        dplyr::distinct(gs_name, gs_description)
+      res.msigdf.em2 <- em2@result
+      res.msigdf.em2$core_enrichment <- entrez_to_symbols(res.msigdf.em2$core_enrichment, OrgDb, ntop = 24)
+      res.msigdf.em2 <- res.msigdf.em2 %>%
+        tidyr::separate_rows(core_enrichment, convert = TRUE, sep = "/") %>%
+        dplyr::group_by(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, qvalue,
+                        rank, leading_edge) %>%
+        dplyr::arrange(core_enrichment) %>%
+        dplyr::summarise(core_enrichment = paste(core_enrichment, collapse = "/"), .groups = "drop") %>%
+        dplyr::arrange(pvalue, p.adjust)
+      # Append description
+      res.msigdf.em2 <- dplyr::left_join(res.msigdf.em2, m_t2d, by = c("ID" = "gs_name"))
+      res.msigdf.em2$Description <- res.msigdf.em2$gs_description
+      res.msigdf.em2$gs_description <- NULL
+    } else {
+      res.msigdf.em2 <- as.data.frame(matrix(data = "Nothing significant", nrow = 1, ncol = 11))
+      colnames(res.msigdf.em2) <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
+    }
+    res.msigdf.all[[nm]] <- res.msigdf.em2
+  }
+  return(res.msigdf.all)
+}
+
+res.msigdb <- gsea_msigdb_results_to_df(res.msigdb.all = res.msigdb.em2, OrgDb = OrgDb, msigdbr_org = msigdbr_org)
+
+# Plot the top enriched pathways
+for (catname in names(res.msigdb.em2)) {
+  gsea_res <- res.msigdb.em2[[catname]]
+  gsea_df <- as.data.frame(gsea_res)
+  for (i in seq_len(min(num_gseaplots, nrow(gsea_df)))) {
+    pathway_id <- gsea_df$ID[i]
+    pathway_desc <- gsea_df$Description[i]
+    print(
+      gseaplot2(
+        gsea_res,
+        geneSetID = pathway_id,
+        title = paste0(catname, ": ", pathway_desc)
+      )
+    )
+  }
+}
+```
+
 # Save the data
 
 ## Combine MSigDb Results 
 
-```{r msig_combine}
+```{r msig_combine, eval=FALSE}
 # empty list to hold results from unranked MSigDb and GSEA MSigDb in order grouped by enrichment category 
 res.msigdf.all <- list()
 
@@ -548,6 +837,27 @@ for (i in 1:length(names(res.msigdb))) {
   # res.msigdf.all[[length(res.msigdf.all)+1]] = res.msigdb.gsea[[i]]
   # names(res.msigdf.all)[[length(res.msigdf.all)]] = names(res.msigdb.gsea[i])
 }
+```
+
+```{r msig_combine2}
+# Interleave two named lists of the same length
+interleave_lists <- function(list1, list2) {
+  n <- length(list1)
+  if (length(list2) != n) stop("Lists must have the same length")
+  names1 <- names(list1)
+  names2 <- names(list2)
+  out <- vector("list", 2 * n)
+  out_names <- character(2 * n)
+  out[seq(1, 2*n, by=2)] <- list1
+  out[seq(2, 2*n, by=2)] <- list2
+  out_names[seq(1, 2*n, by=2)] <- names1
+  out_names[seq(2, 2*n, by=2)] <- names2
+  names(out) <- out_names
+  out
+}
+
+# Example usage:
+res.msigdf.all <- interleave_lists(res.msigdb.enrich, res.msigdb)
 ```
 
 ```{r}
