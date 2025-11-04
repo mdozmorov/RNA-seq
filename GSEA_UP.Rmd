@@ -64,6 +64,7 @@ max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
 nperm          <- 1000 # Number of permutations (for GSEA)
 num_gseaplots  <- 3 # Number of GSEA plots to plot
+ntop_symbols   <- 24 # Number of top gene entries to annotate with symbols in entrez_to_symbols function (set to Inf to annotate all)
 ```
 ```{r}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
@@ -389,8 +390,8 @@ entrez_to_symbols <- function(entrez_list, gene_annotations, ntop = 24) {
   # Initialize result as original input
   result <- entrez_list
   
-  # Process top ntop entries
-  n_to_process <- min(ntop, length(entrez_list))
+  # Process top ntop entries (if ntop is Inf, process all entries)
+  n_to_process <- if (is.infinite(ntop)) length(entrez_list) else min(ntop, length(entrez_list))
   result[1:n_to_process] <- vapply(entrez_list[1:n_to_process], convert_single, character(1))
   
   return(result)
@@ -463,7 +464,7 @@ msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       if (!(is.null(em.up) | is.null(em.dn))) {
         res.msigdf.em <- rbind(em.up@result, em.dn@result)
         res.msigdf.em <- res.msigdf.em[res.msigdf.em$p.adjust < p_adj_cutoff, , drop = FALSE]
-        res.msigdf.em$core_enrichment <- entrez_to_symbols(res.msigdf.em$geneID, gene_annotations, ntop = 24)
+        res.msigdf.em$core_enrichment <- entrez_to_symbols(res.msigdf.em$geneID, gene_annotations, ntop = ntop_symbols)
         # sort the genes alphabetically
         res.msigdf.em <- res.msigdf.em %>% 
           # separate the rows by splitting by the delimiter and expanding the rows 
@@ -495,7 +496,7 @@ msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
       if (!(is.null(em))) {
         res.msigdf.em <- rbind(em@result)
         res.msigdf.em <- res.msigdf.em[res.msigdf.em$p.adjust < p_adj_cutoff, , drop = FALSE]
-        res.msigdf.em$core_enrichment <- entrez_to_symbols(res.msigdf.em$geneID, gene_annotations, ntop = 24)
+        res.msigdf.em$core_enrichment <- entrez_to_symbols(res.msigdf.em$geneID, gene_annotations, ntop = ntop_symbols)
         # sort the genes alphabetically
         res.msigdf.em <- res.msigdf.em %>% 
           # separate the rows by splitting by the delimiter and expanding the rows 
@@ -690,7 +691,7 @@ gsea_msigdb_enrich <- function(dataset, p_adj_cutoff = p_adj_cutoff) {
     # Check if the results are non-empty
     if (nrow(em2@result) > 0) {
       res.msigdf.em2 <- em2@result
-      res.msigdf.em2$core_enrichment <- entrez_to_symbols(res.msigdf.em2$core_enrichment, gene_annotations, ntop = 24)
+      res.msigdf.em2$core_enrichment <- entrez_to_symbols(res.msigdf.em2$core_enrichment, gene_annotations, ntop = ntop_symbols)
       # sort the genes alphabetically
       res.msigdf.em2 <- res.msigdf.em2 %>% 
       # separate the rows by splitting by the delimiter and expanding the rows 
@@ -765,7 +766,7 @@ gsea_msigdb_results_to_df <- function(res.msigdb.all, gene_annotations, msigdbr_
       m_t2d <- msigdbr(species = msigdbr_org, collection = gs_cat) %>%
         dplyr::distinct(gs_name, gs_description)
       res.msigdf.em2 <- em2@result
-      res.msigdf.em2$core_enrichment <- entrez_to_symbols(res.msigdf.em2$core_enrichment, gene_annotations, ntop = 24)
+      res.msigdf.em2$core_enrichment <- entrez_to_symbols(res.msigdf.em2$core_enrichment, gene_annotations, ntop = ntop_symbols)
       res.msigdf.em2 <- res.msigdf.em2 %>%
         tidyr::separate_rows(core_enrichment, convert = TRUE, sep = "/") %>%
         dplyr::group_by(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, qvalue,
