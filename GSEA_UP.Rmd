@@ -363,13 +363,17 @@ websiteLive <- TRUE # Check if EnrichR is up
 ```{r hyper_msig}
 # Convert Entrez IDs to symbols using gene_annotations object
 # This function uses the gene_annotations tibble that contains entrezid-to-symbol mappings
+#
+# @param entrez_list Character vector of slash-separated EntrezID strings
+# @param gene_annotations Tibble with columns entrezid and symbol for mapping
+# @param ntop Number of entries to process (default: 24)
+# @return Character vector with EntrezIDs converted to gene symbols
 entrez_to_symbols <- function(entrez_list, gene_annotations, ntop = 24) {
   # Create a fast lookup table (named vector) from entrezid to symbol
-  # Filter out NA entrezids, keep only first symbol per entrezid, and create hash-like lookup for O(1) access
+  # Filter out NA entrezids, keep first occurrence per entrezid for O(1) hash-based lookups
   entrez_map_df <- gene_annotations %>%
     dplyr::filter(!is.na(entrezid)) %>%
-    dplyr::distinct(entrezid, .keep_all = TRUE) %>%
-    dplyr::select(entrezid, symbol)
+    dplyr::distinct(entrezid, symbol)
   entrez_lookup <- setNames(entrez_map_df$symbol, entrez_map_df$entrezid)
   
   # Function to convert a single slash-separated string
@@ -378,6 +382,7 @@ entrez_to_symbols <- function(entrez_list, gene_annotations, ntop = 24) {
     # Use named vector indexing for O(1) lookup with proper NA handling
     matched_symbols <- entrez_lookup[entrez_ids]
     symbols <- ifelse(is.na(matched_symbols), entrez_ids, matched_symbols)
+    # Sort alphabetically for consistent output across runs
     paste(sort(symbols), collapse = "/")
   }
   
