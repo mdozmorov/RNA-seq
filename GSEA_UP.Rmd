@@ -64,7 +64,7 @@ max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
 p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
 nperm          <- 1000 # Number of permutations (for GSEA)
 num_gseaplots  <- 3 # Number of GSEA plots to plot
-ntop_symbols   <- 24 # Number of gene entries to annotate with symbols (set to Inf to annotate all)
+ntop_symbols   <- 24 # Number of top gene entries to annotate with symbols in entrez_to_symbols function (set to Inf to annotate all)
 ```
 ```{r}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
@@ -391,11 +391,7 @@ entrez_to_symbols <- function(entrez_list, gene_annotations, ntop = 24) {
   result <- entrez_list
   
   # Process top ntop entries (if ntop is Inf, process all entries)
-  if (is.infinite(ntop)) {
-    n_to_process <- length(entrez_list)
-  } else {
-    n_to_process <- min(ntop, length(entrez_list))
-  }
+  n_to_process <- if (is.infinite(ntop)) length(entrez_list) else min(ntop, length(entrez_list))
   result[1:n_to_process] <- vapply(entrez_list[1:n_to_process], convert_single, character(1))
   
   return(result)
