@@ -365,20 +365,22 @@ websiteLive <- TRUE # Check if EnrichR is up
 # This function uses the gene_annotations tibble that contains entrezid-to-symbol mappings
 entrez_to_symbols <- function(entrez_list, gene_annotations, ntop = 24) {
   # Create a fast lookup table (named vector) from entrezid to symbol
-  # Filter out NA entrezids and create hash-like lookup for O(1) access
+  # Filter out NA entrezids, keep only first symbol per entrezid, and create hash-like lookup for O(1) access
   entrez_map_df <- gene_annotations %>%
     dplyr::filter(!is.na(entrezid)) %>%
     dplyr::select(entrezid, symbol) %>%
-    dplyr::distinct()
+    dplyr::distinct() %>%
+    dplyr::group_by(entrezid) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup()
   entrez_lookup <- setNames(entrez_map_df$symbol, entrez_map_df$entrezid)
   
   # Function to convert a single slash-separated string
   convert_single <- function(entrez_string) {
     entrez_ids <- unlist(strsplit(entrez_string, "/"))
-    # Use vectorized lookup for better performance
-    symbols <- ifelse(entrez_ids %in% names(entrez_lookup), 
-                     entrez_lookup[entrez_ids], 
-                     entrez_ids)  # fallback to ID if not found
+    # Use match() for safe vectorized lookup with proper NA handling
+    matched_symbols <- entrez_lookup[entrez_ids]
+    symbols <- ifelse(is.na(matched_symbols), entrez_ids, matched_symbols)
     paste(sort(symbols), collapse = "/")
   }
   
