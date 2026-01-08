@@ -236,7 +236,7 @@ pheatmap(IAC,annotation_col = plot_annotations, clustering_method = "ward.D")
 
 ```{r}
 # PCA: Check for batch effects. Select one batch, to color points by its assignment
-pca <-  mtx_to_plot %>% scale %>% t %>% prcomp
+pca <-  mtx_to_plot %>% t %>% scale %>% prcomp
 data.frame(summary(pca)$importance)[, 1:min(5, ncol(summary(pca)$importance))] %>% pander # Percent of variance explained
 
 # # What correlates with the first component

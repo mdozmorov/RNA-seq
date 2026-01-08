@@ -36,22 +36,19 @@ library(nichenetr)
 library(enrichplot)
 ```
 
+# Settings
+
 ```{r settings}
 # Data
 data_dir       <- getwd() # Working directory
 # File to save all results of differential expression analysis
-fileNameIn1   <- file.path(data_dir, "results/DEGs.xlsx") 
-degs_sheet <- "1.KO_vs_WT"
-# degs_sheet <- "2.p53mut_5Gy_vs_p53mut_noGy"
-# degs_sheet <- "3.M54_L_vs_Ctrl_L"
-# degs_sheet <- "4.M55_L_vs_Ctrl_L"
-# degs_sheet <- "5.C231_HP_vs_C231_HD"
-# degs_sheet <- "6.C231_LP_vs_C231_LD"
-
+fileNameIn1   <- file.path(data_dir, "data/Proteomics_DE_analysis.xlsx") 
+degs_sheet <- "DFMO_NORX"
+degs_sheet <- "GC7_NORX"
+degs_sheet <- "DFMO_GC7"
 
 up_dn_separate <- FALSE # Whether to run KEGG separately on up- and downregulated genes. FALSE - do not distinguish directionality
-p_val_cutoff   <- 0.05 # Regular p-value cutoff
-FDR_cutoff     <- 0.3# FDR cutoff for DEGs
+p_val_cutoff   <- 0.1 # FDR cutoff for DEGs
 msigdb_all     <- FALSE # Use all MSigDb categories (TRUE), or c("C2", "C5", "H") (FALSE)
 fileNameOut1 <- file.path(data_dir, paste0("results/GSEA2_", make.names(degs_sheet), ".xlsx"))
 # Create output folder, if not exists
@@ -60,16 +57,28 @@ if (!dir.exists(file.path(data_dir, "results"))) dir.create(file.path(data_dir, 
 # Which pathway enrichment analysis to run
 run_gsea <- TRUE # If TRUE, GSEA pathway enrichment analysis is run, otherwise, standard hypergeometric-based enrichment
 min_kegg_genes <- 20 # Minimum number of genes to run enrichment analysis on
-max_kegg_genes <- 2000 # Maximum number of genes to run enrichment analysis on
+max_kegg_genes <- 500 # Maximum number of genes to run enrichment analysis on
 p_adj_cutoff   <- 1 # FDR cutoff for enrichment results
 nperm          <- 1000 # Number of permutations (for GSEA)
 num_gseaplots  <- 3 # Number of GSEA plots to plot
 ntop_symbols   <- 24 # Number of top gene entries to annotate with symbols in entrez_to_symbols function (set to Inf to annotate all)
 ```
+
+## Rename results
+
+```{r eval=FALSE}
+# To run manually after knitting, renames the default PDF to analysis-specific
+fileNameOut1 <- file.path(data_dir, "GSEA_UP.pdf")
+fileNameOut2 <- file.path(data_dir, paste0("GSEA2_", make.names(degs_sheet), ".pdf"))
+file.rename(fileNameOut1, fileNameOut2)
+```
+
+## Organism settings
+
 ```{r}
 # Mutually exclusive selectors, which analysis should be run. Only one may be TRUE
-human_analysis <- FALSE
-mouse_analysis <- TRUE
+human_analysis <- TRUE
+mouse_analysis <- FALSE
 
 # Bioconductor setup (if needed):
 # if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
@@ -245,8 +254,9 @@ all.symbol <- unique(gene_annotations$symbol)
 
 ```{r}
 mtx <- read_xlsx(fileNameIn1, sheet = degs_sheet)
-res <- data.frame(symbol = mtx$symbol, logFC = mtx$logFC, p.val = mtx$PValue, p.adj = mtx$FDR)
+res <- data.frame(symbol = mtx$Protein, logFC = mtx[, grepl("log2", colnames(mtx)), drop = TRUE], p.val = mtx$p.value, p.adj = mtx$FDR)
 res <- res[ order(res$p.val, decreasing = FALSE), ]
+res <- res[complete.cases(res), ]
 # fix gene names 
 # current_map <- getCurrentHumanMap()
 # genes_checked <- checkGeneSymbols(res$symbol, map = current_map)
@@ -331,7 +341,7 @@ websiteLive <- TRUE # Check if EnrichR is up
     if (nrow(res[res$p.val < p_val_cutoff, ]) > max_kegg_genes) {
       degs_subset <- res[1:max_kegg_genes, ]
     } else {
-      degs_subset <- res[res$p.adj < FDR_cutoff, ]
+      degs_subset <- res[res$p.adj < p_val_cutoff, ]
     }
     # Get list of up- and downregulated genes
     up.genes <- sort(unique(degs_subset$symbol[ degs_subset$logFC > 0 ]))
